@@ -1,0 +1,46 @@
+{
+  "name": "codecoliseum-express",
+  "version": "1.0.0",
+  "description": "",
+  "license": "ISC",
+  "author": "",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "ts-node-dev -r tsconfig-paths/register --respawn --transpile-only server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "test": "jest",
+    "lint": "eslint . --ext .ts"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/helmet": "^0.0.48",
+    "@types/jest": "^30.0.0",
+    "@types/morgan": "^1.9.10",
+    "@types/node": "^25.2.3",
+    "@types/nodemailer": "^7.0.10",
+    "@types/pg": "^8.16.0",
+    "eslint": "^10.0.0",
+    "jest": "^30.2.0",
+    "prisma": "^7.4.0",
+    "ts-jest": "^29.4.6",
+    "ts-node-dev": "^2.0.0",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.4.0",
+    "@prisma/client": "^7.4.0",
+    "better-auth": "^1.4.18",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "helmet": "^8.1.0",
+    "morgan": "^1.10.1",
+    "nodemailer": "^8.0.1",
+    "pg": "^8.18.0",
+    "winston": "^3.19.0",
+    "zod": "^4.3.6"
+  }
+}
