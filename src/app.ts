@@ -1,13 +1,12 @@
+import "dotenv/config";
 import express, { Application, Request, Response, NextFunction } from "express";
 import helmet from "helmet";
 import cors from "cors";
-import dotenv from "dotenv";
 import morgan from "morgan";
 import { toNodeHandler } from "better-auth/node";
 import { auth } from "@/utils/auth";
-
-// Load environment variables
-dotenv.config();
+import teacherRouter from "@/routes/teacher.route";
+import problemRouter from "@/routes/problem.route";
 
 const app: Application = express();
 
@@ -17,8 +16,9 @@ app.use(helmet());
 
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:3000",
+    origin: process.env.FRONTEND_URL,
     credentials: true,
+    optionsSuccessStatus: 200, // For legacy browser support
   }),
 );
 
@@ -30,6 +30,14 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.get("/health", (req: Request, res: Response) => {
   res.status(200).json({ status: "UP", timestamp: new Date().toISOString() });
 });
+
+app.get("/", (req: Request, res: Response) => {
+  res.status(200).json({ status: "UP" });
+});
+
+app.use("/teacher", teacherRouter);
+
+app.use("/problems", problemRouter);
 
 app.use((req: Request, res: Response) => {
   res.status(404).json({ message: "Resource not found" });

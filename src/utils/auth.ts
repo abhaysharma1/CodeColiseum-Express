@@ -1,8 +1,8 @@
+import "dotenv/config";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import prisma from "./prisma";
 import transporter from "./nodemailer";
-import "dotenv/config";
 
 export const auth = betterAuth({
   database: prismaAdapter(prisma, {
@@ -13,12 +13,6 @@ export const auth = betterAuth({
       enabled: true,
       maxAge: 5 * 60, // Cache duration in seconds (5 minutes)
       strategy: "jwt",
-    },
-  },
-  socialProviders: {
-    github: {
-      clientId: process.env.GITHUB_CLIENT_ID as string,
-      clientSecret: process.env.GITHUB_CLIENT_SECRET as string,
     },
   },
   emailAndPassword: {
@@ -124,4 +118,5 @@ export const auth = betterAuth({
       });
     },
   },
+  trustedOrigins: [process.env.FRONTEND_URL!], // Explicitly allow localhost for development
 });
