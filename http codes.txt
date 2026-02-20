@@ -8,3 +8,18 @@
 404 Not Found
 
 500 Internal Server Error
+
+
+export async function getExamResult(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const user = req.user;
+    const { examId } = req.query;
+    
+  } catch (error) {
+    next(error);
+  }
+}

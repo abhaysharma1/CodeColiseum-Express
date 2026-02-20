@@ -1,5 +1,5 @@
 
-import { draftExam, fetchAllExams, getAllExamProblem, getAllGroupExams, getAllGroups, getExam, getExamAIResults, getExamResults, publishExam, saveDraft } from "@/controllers/teacher.controllers";
+import { draftExam, fetchAllExams, getAiEvaluationStatus, getAllExamProblem, getAllGroupExams, getAllGroups, getExam, getExamAIResults, getExamResults, publishExam, saveDraft, startAiEvaluation } from "@/controllers/teacher.controllers";
 import { Router } from "express";
 
 const router = Router();
@@ -24,5 +24,9 @@ router.post("/publishexam",publishExam)
 router.get("/getresults",getExamResults)
 
 router.get("/getairesult",getExamAIResults)
+
+router.post("/start-ai-evaluation",startAiEvaluation)
+
+router.get("/get-ai-evaluation-status",getAiEvaluationStatus)
 
 export default router;

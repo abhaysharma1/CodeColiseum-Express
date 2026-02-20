@@ -7,6 +7,8 @@ import { toNodeHandler } from "better-auth/node";
 import { auth } from "@/utils/auth";
 import teacherRouter from "@/routes/teacher.route";
 import problemRouter from "@/routes/problem.route";
+import studentRouter from "@/routes/student.routes";
+import adminRouter from "@/routes/admin.route";
 
 const app: Application = express();
 
@@ -36,6 +38,10 @@ app.get("/", (req: Request, res: Response) => {
 });
 
 app.use("/teacher", teacherRouter);
+
+app.use("/student", studentRouter);
+
+app.use("/admin", adminRouter);
 
 app.use("/problems", problemRouter);
 

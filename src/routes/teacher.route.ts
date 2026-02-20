@@ -1,6 +1,6 @@
 import { Router } from "express";
 import teacherExamRouter from "@/routes/exam.teacher.route";
-import { isTeacher } from "@/middleware/isTeacher";
+import { isTeacher } from "@/middleware/isTeacher.middleware";
 import { addMemberToGroup, createGroup, getAllGroups, getGroupDetails, getGroupMembers } from "@/controllers/teacher.controllers";
 
 const router = Router();

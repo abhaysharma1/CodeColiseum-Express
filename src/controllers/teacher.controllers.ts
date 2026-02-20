@@ -1,4 +1,5 @@
 import prisma from "@/utils/prisma";
+import { sendBatchToSQS } from "@/utils/sqs";
 import { NextFunction, Request, Response } from "express";
 import { Group } from "generated/prisma/client";
 import { z } from "zod";
@@ -720,7 +721,6 @@ export const createGroup = async (
   }
 };
 
-
 export const getGroupDetails = async (
   req: Request,
   res: Response,
@@ -859,6 +859,131 @@ export const addMemberToGroup = async (
       message: "Members added successfully",
       notFoundStudents,
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const startAiEvaluation = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const user = req.user;
+    const examId = String(req.body.examId);
+
+    if (!examId) {
+      return res.status(400).json({ error: "Exam ID is required" });
+    }
+
+    const exam = await prisma.exam.findUnique({
+      where: { id: examId },
+    });
+
+    if (!exam) {
+      return res.status(404).json({ error: "Exam not found" });
+    }
+
+    if (exam.creatorId !== user.id) {
+      return res
+        .status(403)
+        .json({ error: "Not authorized to evaluate this exam" });
+    }
+
+    const now = new Date();
+    if (exam.endDate > now) {
+      return res.status(400).json({
+        error: "Exam not ready for AI evaluation",
+      });
+    } else {
+      await prisma.exam.update({
+        where: {
+          id: exam.id,
+        },
+        data: {
+          status: "completed",
+        },
+      });
+    }
+
+    // 2️⃣ Get final submissions
+    const submissions = await prisma.submission.findMany({
+      where: {
+        examId,
+        isFinal: true,
+        aiStatus: "PENDING",
+      },
+      select: { id: true },
+    });
+
+    if (submissions.length === 0) {
+      return res.status(404).json({
+        message: "No submissions to evaluate",
+      });
+    }
+
+    const submissionIds = submissions.map((s: { id: string }) => s.id);
+
+    // 3️⃣ Update exam status BEFORE sending
+    await prisma.exam.update({
+      where: { id: String(examId) },
+      data: { status: "ai_processing" },
+    });
+
+    // 4️⃣ Send to SQS
+    await sendBatchToSQS(submissionIds);
+
+    return res.status(201).json({
+      message: "AI evaluation started",
+      total: submissionIds.length,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getAiEvaluationStatus = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const user = req.user;
+    const examId = String(req.query.examId);
+
+    if (!examId) {
+      return res.status(400).json({ error: "Exam ID is required" });
+    }
+
+    // Verify exam exists and user has access
+    const exam = await prisma.exam.findUnique({
+      where: { id: examId },
+    });
+
+    if (!exam) {
+      return res.status(404).json({ error: "Exam not found" });
+    }
+
+    if (exam.creatorId !== user.id) {
+      return res
+        .status(403)
+        .json({ error: "Not authorized to view this exam's status" });
+    }
+
+    const total = await prisma.submission.count({
+      where: { examId, isFinal: true },
+    });
+
+    const completed = await prisma.submission.count({
+      where: {
+        examId,
+        isFinal: true,
+        aiStatus: "COMPLETED",
+      },
+    });
+
+    return res.status(200).json({ data: { total, completed } });
   } catch (error) {
     next(error);
   }
