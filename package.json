@@ -10,7 +10,8 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "test": "jest",
-    "lint": "eslint . --ext .ts"
+    "lint": "eslint . --ext .ts",
+    "docker:build": "docker build -t codecoliseum-express ."
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
