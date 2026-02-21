@@ -118,5 +118,9 @@ export const auth = betterAuth({
       });
     },
   },
+  defaultCookieAttributes: {
+    sameSite: "none", // REQUIRED for cross-site
+    secure: true, // REQUIRED when sameSite is "none"
+  },
   trustedOrigins: [process.env.FRONTEND_URL!], // Explicitly allow localhost for development
 });
