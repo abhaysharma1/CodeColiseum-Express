@@ -11,7 +11,7 @@ import {
 } from "@/controllers/student.group.controllers";
 import isStudent from "@/middleware/isStudent.middleware";
 import { Router } from "express";
-import examRoutes from "@/routes/exam.teacher.route";
+import examRoutes from "@/routes/exam.student.route";
 
 const router = Router();
 

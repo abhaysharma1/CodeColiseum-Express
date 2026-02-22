@@ -4,15 +4,17 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 import prisma from "./prisma";
 import transporter from "./nodemailer";
 
+const isDev = process.env.NODE_ENV === "development";
+
 export const auth = betterAuth({
   database: prismaAdapter(prisma, {
     provider: "postgresql",
   }),
   advanced: {
     defaultCookieAttributes: {
-      domain: ".codecoliseum.in", // ← THIS FIXES EVERYTHING
-      secure: true,
-      sameSite: "none", // recommended for cross-subdomain
+      domain: isDev ?  undefined: ".codecoliseum.in" ,
+      secure: !isDev,
+      sameSite: isDev ? "lax" : "none",
       path: "/",
     },
   },
