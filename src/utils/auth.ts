@@ -9,6 +9,12 @@ export const auth = betterAuth({
     provider: "postgresql",
   }),
   session: {
+    cookieOptions: {
+      domain: ".codecoliseum.in", // ← THIS FIXES EVERYTHING
+      secure: true,
+      sameSite: "none", // recommended for cross-subdomain
+      path: "/",
+    },
     cookieCache: {
       enabled: true,
       maxAge: 5 * 60, // Cache duration in seconds (5 minutes)
@@ -117,6 +123,9 @@ export const auth = betterAuth({
         `, // HTML body
       });
     },
+  },
+  cookieOptions: {
+    domain: ".codecoliseum.in",
   },
   trustedOrigins: [process.env.FRONTEND_URL!], // Explicitly allow localhost for development
 });
