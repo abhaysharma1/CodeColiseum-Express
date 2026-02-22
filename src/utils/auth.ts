@@ -8,16 +8,18 @@ export const auth = betterAuth({
   database: prismaAdapter(prisma, {
     provider: "postgresql",
   }),
-  session: {
-    cookieOptions: {
+  advanced: {
+    defaultCookieAttributes: {
       domain: ".codecoliseum.in", // ← THIS FIXES EVERYTHING
       secure: true,
       sameSite: "none", // recommended for cross-subdomain
       path: "/",
     },
+  },
+  session: {
     cookieCache: {
       enabled: true,
-      maxAge: 5 * 60, // Cache duration in seconds (5 minutes)
+      maxAge: 20 * 60, // Cache duration in seconds (5 minutes)
       strategy: "jwt",
     },
   },
