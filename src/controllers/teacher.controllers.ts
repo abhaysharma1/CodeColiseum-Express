@@ -983,7 +983,7 @@ export const getAiEvaluationStatus = async (
       },
     });
 
-    return res.status(200).json({ data: { total, completed } });
+    return res.status(200).json({ total, completed });
   } catch (error) {
     next(error);
   }
