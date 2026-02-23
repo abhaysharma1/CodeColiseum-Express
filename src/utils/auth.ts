@@ -128,8 +128,5 @@ export const auth = betterAuth({
       });
     },
   },
-  cookieOptions: {
-    domain: ".codecoliseum.in",
-  },
   trustedOrigins: [process.env.FRONTEND_URL!], // Explicitly allow localhost for development
 });

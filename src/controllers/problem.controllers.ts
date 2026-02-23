@@ -3,7 +3,12 @@ import { NextFunction, Request, Response } from "express";
 import { auth } from "../utils/auth";
 import { fromNodeHeaders } from "better-auth/node";
 import { runCodeService, RunCodeRequest } from "../services/codeRunner.service";
-import { submitCodeService, SubmitCodeRequest } from "../services/problemSubmission.service";
+import {
+  submitCodeService,
+  SubmitCodeRequest,
+} from "../services/problemSubmission.service";
+import { enqueuePracticeAIReview } from "@/services/startAiEvaluation.service";
+import { redis } from "@/config/upstashRedis.config";
 
 export const getProblems = async (
   req: Request,
@@ -269,4 +274,51 @@ export const submitCode = async (
   }
 };
 
+export const startPracticeAiReview = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const user = req.user;
+    const { problemId, code, language } = req.body;
 
+    const { jobId } = await enqueuePracticeAIReview({
+      userId: user.id,
+      problemId,
+      code,
+      language,
+    });
+
+    res.json({ success: true, jobId });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getPracticeAiReviewStatus = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { jobId } = req.query;
+
+    if (!jobId) {
+      return res.status(400).json({ error: "jobId required" });
+    }
+
+    const result = await redis.get(`ai_review:${jobId}`);
+
+    if (!result) {
+      return res.json({ status: "PROCESSING" });
+    }
+
+    return res.status(200).json({
+      status: "COMPLETED",
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
