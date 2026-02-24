@@ -1,5 +1,6 @@
 import { isLoggedIn } from "@/middleware/isLoggedin.middleware";
 import {
+  getPracticeAiReviewStatus,
   getProblems,
   getProblemTags,
   getProblemTestCases,
@@ -24,5 +25,8 @@ router.post("/runcode", runCode);
 router.post("/submitcode", submitCode);
 
 router.post("/start-ai-review", startPracticeAiReview);
+
+router.get("/practice-ai-review-status", getPracticeAiReviewStatus);
+
 
 export default router;
