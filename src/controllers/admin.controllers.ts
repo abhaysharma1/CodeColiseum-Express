@@ -1,8 +1,13 @@
-import { Request, Response } from "express";
+import { NextFunction, Request, Response } from "express";
 import { z } from "zod";
-import { expectedComplexity, GeneratorPattern, GeneratorType } from "../../generated/prisma/enums";
+import {
+  expectedComplexity,
+  GeneratorPattern,
+  GeneratorType,
+} from "../../generated/prisma/enums";
 import { Prisma } from "../../generated/prisma/client";
 import prisma from "@/utils/prisma";
+import { auth } from "@/utils/auth";
 import axios from "axios";
 
 // Types
@@ -24,7 +29,10 @@ interface JudgeResponse {
   expected_output?: string | null;
 }
 
-interface Judge0Raw extends Omit<JudgeResponse, "stdout" | "stderr" | "compile_output" | "message"> {
+interface Judge0Raw extends Omit<
+  JudgeResponse,
+  "stdout" | "stderr" | "compile_output" | "message"
+> {
   stdout: string | null;
   stderr: string | null;
   compile_output: string | null;
@@ -56,10 +64,12 @@ const reconstructJudge0Response = (raw: Judge0Raw): JudgeResponse => ({
 const complexityCasesSchema = z.object({
   problemId: z.string(),
   expectedComplexity: z.enum(["N", "LOGN", "NLOGN", "N2", "N3", "EXP"]),
-  cases: z.array(z.object({ 
-    input: z.string(), 
-    output: z.string() 
-  })),
+  cases: z.array(
+    z.object({
+      input: z.string(),
+      output: z.string(),
+    }),
+  ),
 });
 
 const driverCodeSchema = z.object({
@@ -77,7 +87,9 @@ const problemTestGeneratorSchema = z.object({
   minValue: z.number().int(),
   maxValue: z.number().int(),
   sizes: z.array(z.number().int().positive()).min(3),
-  expectedComplexity: z.enum(["N", "LOGN", "NLOGN", "N2", "N3", "EXP"]).default("N"),
+  expectedComplexity: z
+    .enum(["N", "LOGN", "NLOGN", "N2", "N3", "EXP"])
+    .default("N"),
 });
 
 const testSchema = z.object({
@@ -98,15 +110,27 @@ const problemSchema = z.object({
 
 const uploadProblemsSchema = z.array(problemSchema).max(2000);
 
+const bulkSignUpSchema = z.object({
+  emails: z
+    .array(z.string().email("Invalid email address"))
+    .min(1, "At least one email is required")
+    .max(500, "Cannot sign up more than 500 users at once"),
+  role: z.enum(["TEACHER", "STUDENT", "ADMIN"]).optional().default("STUDENT"),
+});
+
 const validateComplexitySchema = z.object({
   problemId: z.string(),
   casesData: z.object({
     expectedComplexity: z.enum(["N", "LOGN", "NLOGN", "N2", "N3", "EXP"]),
-    cases: z.array(z.object({
-      input: z.string(),
-      output: z.string(),
-      size: z.enum(["N", "2N", "4N"]),
-    })).length(3),
+    cases: z
+      .array(
+        z.object({
+          input: z.string(),
+          output: z.string(),
+          size: z.enum(["N", "2N", "4N"]),
+        }),
+      )
+      .length(3),
   }),
 });
 
@@ -118,7 +142,11 @@ export const uploadComplexityCases = async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Validation Error" });
     }
 
-    const { problemId, expectedComplexity: complexity, cases } = validation.data;
+    const {
+      problemId,
+      expectedComplexity: complexity,
+      cases,
+    } = validation.data;
 
     const problem = await prisma.problem.findUnique({
       where: { id: problemId },
@@ -212,7 +240,10 @@ export const getProblemTestGenerator = async (req: Request, res: Response) => {
 };
 
 // Create/Update Problem Test Generator
-export const createUpdateProblemTestGenerator = async (req: Request, res: Response) => {
+export const createUpdateProblemTestGenerator = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const validation = problemTestGeneratorSchema.safeParse(req.body);
     if (!validation.success) {
@@ -222,12 +253,16 @@ export const createUpdateProblemTestGenerator = async (req: Request, res: Respon
     const data = validation.data;
 
     if (data.minValue >= data.maxValue) {
-      return res.status(400).json({ error: "minValue must be less than maxValue" });
+      return res
+        .status(400)
+        .json({ error: "minValue must be less than maxValue" });
     }
 
     for (let i = 1; i < data.sizes.length; i++) {
       if (data.sizes[i] <= data.sizes[i - 1]) {
-        return res.status(400).json({ error: "sizes must be strictly increasing" });
+        return res
+          .status(400)
+          .json({ error: "sizes must be strictly increasing" });
       }
     }
 
@@ -240,14 +275,20 @@ export const createUpdateProblemTestGenerator = async (req: Request, res: Respon
         minValue: data.minValue,
         maxValue: data.maxValue,
         sizes: data.sizes,
-        expectedComplexity: expectedComplexity[data.expectedComplexity as keyof typeof expectedComplexity],
+        expectedComplexity:
+          expectedComplexity[
+            data.expectedComplexity as keyof typeof expectedComplexity
+          ],
       },
       update: {
         pattern: data.pattern as keyof typeof GeneratorPattern,
         minValue: data.minValue,
         maxValue: data.maxValue,
         sizes: data.sizes,
-        expectedComplexity: expectedComplexity[data.expectedComplexity as keyof typeof expectedComplexity],
+        expectedComplexity:
+          expectedComplexity[
+            data.expectedComplexity as keyof typeof expectedComplexity
+          ],
       },
     });
 
@@ -278,7 +319,12 @@ export const uploadProblems = async (req: Request, res: Response) => {
     });
 
     let nextNum = (currNum._max.number ?? 0) + 1;
-    let results: Array<{ title: string; result: "created" | "error"; number?: number; message?: string }> = [];
+    let results: Array<{
+      title: string;
+      result: "created" | "error";
+      number?: number;
+      message?: string;
+    }> = [];
 
     for (const p of problems) {
       try {
@@ -407,14 +453,16 @@ export const validateComplexityCases = async (req: Request, res: Response) => {
             headers: {
               "X-AUTH_TOKEN": JUDGE0_API_KEY,
             },
-          }
+          },
         );
 
         const decoded = reconstructJudge0Response(response.data);
         results[i] = decoded;
       } catch (error) {
         console.error(error);
-        return res.status(500).json({ error: "Please Run the Validation Again" });
+        return res
+          .status(500)
+          .json({ error: "Please Run the Validation Again" });
       }
     }
 
@@ -475,7 +523,10 @@ export const validateProblem = async (req: Request, res: Response) => {
     const problems = validation.data;
     const firstProblem = problems[0];
 
-    const testCasesBefore = [...firstProblem.publicTests, ...firstProblem.hiddenTests];
+    const testCasesBefore = [
+      ...firstProblem.publicTests,
+      ...firstProblem.hiddenTests,
+    ];
     const cases = JSON.parse(JSON.stringify(testCasesBefore));
     const code = firstProblem.referenceSolution.code;
 
@@ -502,7 +553,7 @@ export const validateProblem = async (req: Request, res: Response) => {
         headers: {
           "X-AUTH_TOKEN": JUDGE0_API_KEY,
         },
-      }
+      },
     );
 
     const tokens = (batchResponse.data as any[]).map((item: any) => item.token);
@@ -522,7 +573,7 @@ export const validateProblem = async (req: Request, res: Response) => {
             headers: {
               "X-AUTH_TOKEN": JUDGE0_API_KEY,
             },
-          }
+          },
         );
 
         const result = reconstructJudge0Response(statusResponse.data);
@@ -539,7 +590,7 @@ export const validateProblem = async (req: Request, res: Response) => {
     };
 
     const responses = await Promise.all(
-      tokens.map((token: string) => pollSubmission(token))
+      tokens.map((token: string) => pollSubmission(token)),
     );
 
     res.status(200).json({ responses, cases });
@@ -587,3 +638,64 @@ function classifyComplexity(r1: number, r2: number) {
     r2,
   };
 }
+
+export const bulkSignUp = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const validation = bulkSignUpSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({
+        error: "Validation Error",
+        details: validation.error.flatten(),
+      });
+    }
+
+    const { emails, role } = validation.data;
+
+    const results: Array<{
+      email: string;
+      result: "created" | "error";
+      message?: string;
+    }> = [];
+
+    for (const email of emails) {
+      const password = email.split("@")[0];
+      const name = password;
+
+      try {
+        await auth.api.signUpEmail({
+          body: {
+            email,
+            password,
+            name,
+            role,
+          } as any,
+          headers: new Headers(),
+        });
+
+        await prisma.user.update({
+          where: { email },
+          data: { emailVerified: true, isOnboarded: true },
+        });
+
+        results.push({ email, result: "created" });
+      } catch (err: any) {
+        results.push({
+          email,
+          result: "error",
+          message: err?.body?.message ?? err?.message ?? "Failed to create account",
+        });
+      }
+    }
+
+    const failed = results.filter((r) => r.result === "error");
+    const statusCode = failed.length === 0 ? 201 : failed.length === results.length ? 400 : 207;
+
+    res.status(statusCode).json({ success: failed.length === 0, results });
+  } catch (error) {
+    next(error);
+  }
+};

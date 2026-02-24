@@ -14,13 +14,14 @@ import { Router } from "express";
 
 const router = Router();
 
-router.use(isLoggedIn);
-
 router.get("/getproblems", getProblems);
 router.get("/gettags", getProblemTags);
 router.get("/gettestcases", getProblemTestCases);
-router.post("/getsubmissions", getSubmissions);
 router.post("/gettemplatecode", getTemplateCode);
+
+router.use(isLoggedIn);
+
+router.post("/getsubmissions", getSubmissions);
 router.post("/runcode", runCode);
 router.post("/submitcode", submitCode);
 

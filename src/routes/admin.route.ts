@@ -8,6 +8,7 @@ import {
   uploadProblems,
   validateComplexityCases,
   validateProblem,
+  bulkSignUp,
 } from "@/controllers/admin.controllers";
 
 const router = Router();
@@ -31,5 +32,7 @@ router.post("/upload-problems", uploadProblems);
 // Validation Routes
 router.post("/validate-complexity-cases", validateComplexityCases);
 router.post("/validate-problem", validateProblem);
+
+router.post("/bulkSignup", bulkSignUp);
 
 export default router;
