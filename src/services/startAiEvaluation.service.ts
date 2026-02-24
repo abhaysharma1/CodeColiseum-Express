@@ -78,7 +78,7 @@ export async function enqueuePracticeAIReview({
       body: Buffer.from(JSON.stringify(payload)).toString("base64"),
       oidcToken: {
         serviceAccountEmail,
-        audience: workerUrl,
+        audience: `${workerUrl}/process-ai-review`,
       },
     },
   };
