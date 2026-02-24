@@ -71,7 +71,7 @@ export async function enqueuePracticeAIReview({
   const task = {
     httpRequest: {
       httpMethod: "POST" as const,
-      url: workerUrl,
+      url: `${workerUrl}/process-ai-review`,
       headers: {
         "Content-Type": "application/json",
       },
