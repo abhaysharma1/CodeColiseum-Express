@@ -195,14 +195,14 @@ export const chatWithAi = async (
     const task = {
       httpRequest: {
         httpMethod: "POST" as const,
-        url: `${workerUrl}/process-ai-review`,
+        url: `${workerUrl}/ai-chat-worker`,
         headers: {
           "Content-Type": "application/json",
         },
         body: Buffer.from(JSON.stringify(payload)).toString("base64"),
         oidcToken: {
           serviceAccountEmail,
-          audience: `${workerUrl}/process-ai-review`,
+          audience: `${workerUrl}/ai-chat-worker`,
         },
       },
     };
