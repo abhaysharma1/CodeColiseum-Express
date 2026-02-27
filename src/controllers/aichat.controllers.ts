@@ -2,6 +2,42 @@ import prisma from "@/utils/prisma";
 import { CloudTasksClient } from "@google-cloud/tasks";
 import { NextFunction, Request, Response } from "express";
 
+export const isAiEnabledAndGetGroupId = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const user = req.user;
+    const { examId } = req.query;
+    let group;
+    try {
+      group = await prisma.group.findMany({
+        where: {
+          examGroups: {
+            some: {
+              examId: String(examId),
+            },
+          },
+          members: {
+            some: {
+              studentId: user.id,
+            },
+          },
+          aiEnabled: true,
+        },
+      });
+    } catch (error) {
+      return res.status(200).json({ enabled: false });
+    }
+
+    return res.status(200).json({ enabled: true, groupId: group[0].id });
+  } catch (error) {
+    console.log(error);
+    next(error);
+  }
+};
+
 export const chatWithAi = async (
   req: Request,
   res: Response,

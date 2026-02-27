@@ -10,7 +10,7 @@ import {
   submitCode,
   submitTest,
 } from "../controllers/student.exam.controllers";
-import { chatWithAi, getAiChatStatus } from "@/controllers/aichat.controllers";
+import { chatWithAi, getAiChatStatus, isAiEnabledAndGetGroupId } from "@/controllers/aichat.controllers";
 
 const router = Router();
 
@@ -27,6 +27,8 @@ router.post("/start-test", startTest);
 router.post("/submit-code", submitCode);
 router.post("/submit-test", submitTest);
 
+
+router.get("/ai/isenabledandgetgroupid", isAiEnabledAndGetGroupId);
 router.post("/ai/chat", chatWithAi);
 router.get("/ai/chat/status", getAiChatStatus);
 
