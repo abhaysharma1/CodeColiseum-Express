@@ -33,6 +33,7 @@ model User {
   memberGroups    GroupMember[]
   selfSubmissions selfSubmission[]
   examAttempts    ExamAttempt[]
+  aiconversations AIConversation[]
 
   @@index([email])
   @@map("user")
@@ -111,6 +112,7 @@ model Problem {
   driverCode             driverCode[]
   referenceSolutions     referenceSolution[]
   problemTestGenerators  ProblemTestGenerator?
+  aiconversations        AIConversation[]
 
   @@index([id, number, title])
 }
@@ -259,17 +261,18 @@ model Exam {
   sebEnabled  Boolean    @default(false)
   status      ExamStatus
 
-  creator       User             @relation("CreatedExams", fields: [creatorId], references: [id])
-  creatorId     String
-  problems      ExamProblem[]
-  enrollments   ExamEnrollment[]
-  submissions   Submission[]
-  results       ExamResult[]
-  startDate     DateTime
-  endDate       DateTime
-  examGroups    ExamGroup[]
-  examAttempts  ExamAttempt[]
-  aiEvaluations AiEvaluation[]
+  creator         User             @relation("CreatedExams", fields: [creatorId], references: [id])
+  creatorId       String
+  problems        ExamProblem[]
+  enrollments     ExamEnrollment[]
+  submissions     Submission[]
+  results         ExamResult[]
+  startDate       DateTime
+  endDate         DateTime
+  examGroups      ExamGroup[]
+  examAttempts    ExamAttempt[]
+  aiEvaluations   AiEvaluation[]
+  aiconversations AIConversation[]
 
   @@index([id, creatorId])
 }
@@ -450,8 +453,19 @@ model Group {
   createdAt   DateTime      @default(now())
   joinByLink  Boolean       @default(true)
   examGroups  ExamGroup[]
+  type        groupType     @default(CLASS)
+
+  aiEnabled       Boolean          @default(false)
+  aiMaxMessages   Int? // per student per exam per problem
+  aiMaxTokens     Int? // per student per exam per problem
+  aiconversations AIConversation[]
 
   @@index([creatorId])
+}
+
+enum groupType {
+  CLASS
+  LAB
 }
 
 model GroupMember {
@@ -481,4 +495,62 @@ model ProblemTag {
   tagId String
 
   @@id([problemId, tagId])
+}
+
+model AIConversation {
+  id String @id @default(cuid())
+
+  studentId String
+  groupId   String
+  examId    String
+  problemId String
+
+  messageCount Int @default(0)
+  totalTokens  Int @default(0)
+
+  isClosed Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  student User    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  group   Group   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  exam    Exam    @relation(fields: [examId], references: [id], onDelete: Cascade)
+  problem Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
+  messages AIMessage[]
+
+  @@unique([studentId, examId, problemId])
+}
+
+model AIMessage {
+  id String @id @default(cuid())
+
+  conversationId String
+  role           AIRole
+  content        String
+
+  tokenCount Int?
+  modelUsed  String?
+
+  createdAt DateTime @default(now())
+
+  conversation AIConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+}
+
+enum AIRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+model AIRateLimit {
+  id          String   @id @default(cuid())
+  studentId   String
+  problemId   String
+  lastRequest DateTime
+
+  @@unique([studentId, problemId])
 }

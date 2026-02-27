@@ -4,15 +4,6 @@ import {
   SendMessageBatchCommand,
 } from "@aws-sdk/client-sqs";
 
-if (
-  !process.env.AWS_REGION ||
-  !process.env.AWS_ACCESS_KEY_ID ||
-  !process.env.AWS_SECRET_ACCESS_KEY ||
-  !process.env.SQS_QUEUE_URL
-) {
-  console.log("Missing SQS Variables");
-}
-
 const sqsClient = new SQSClient({
   region: process.env.AWS_REGION!,
   credentials: {
@@ -27,6 +18,14 @@ const QUEUE_URL = process.env.SQS_QUEUE_URL;
  * Send single submission to SQS
  */
 export async function sendMessageToSQS(payload: { submissionId: string }) {
+  if (
+    !process.env.AWS_REGION ||
+    !process.env.AWS_ACCESS_KEY_ID ||
+    !process.env.AWS_SECRET_ACCESS_KEY ||
+    !process.env.SQS_QUEUE_URL
+  ) {
+    console.log("Missing SQS Variables");
+  }
   await sqsClient.send(
     new SendMessageCommand({
       QueueUrl: QUEUE_URL,
