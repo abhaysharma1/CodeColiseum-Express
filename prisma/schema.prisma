@@ -470,9 +470,9 @@ enum groupType {
 
 model GroupMember {
   id        String   @id @default(uuid())
-  group     Group    @relation(fields: [groupId], references: [id])
+  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
   groupId   String
-  student   User     @relation(fields: [studentId], references: [id])
+  student   User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
   studentId String
   addedAt   DateTime @default(now())
 

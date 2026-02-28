@@ -268,10 +268,34 @@ export const publishExam = async (
 
 export const getAllGroups = async (req: Request, res: Response) => {
   const user = req.user;
-  const groups = await prisma.group.findMany({
+  const { take, skip, searchValue, groupType } = req.query;
+  let groups;
+
+  let where: any = {};
+
+  console.log(req.query);
+
+  if (groupType == "CLASS" || groupType == "LAB") {
+    where.type = groupType;
+  }
+
+  if (searchValue) {
+    const searchString = String(searchValue);
+    where.OR = [
+      { name: { contains: searchString, mode: "insensitive" } },
+      { description: { contains: searchString, mode: "insensitive" } },
+    ];
+  }
+
+  console.log(where);
+
+  groups = await prisma.group.findMany({
     where: {
+      ...where,
       creatorId: user.id,
     },
+    take: Number(take) ?? 10,
+    skip: Number(skip) ?? 0,
   });
 
   return res.status(200).json(groups);
@@ -578,19 +602,35 @@ export const createGroup = async (
   res: Response,
   next: NextFunction,
 ) => {
+  const inputSchema = z.object({
+    groupName: z.string(),
+    description: z.string(),
+    emails: z.array(z.string().email()),
+    allowJoinByLink: z.boolean(),
+    isAiEnabled: z.boolean(),
+    type: z.enum(["CLASS", "LAB"]),
+    aiMaxMessages: z.number().min(1).max(50).optional(),
+    aiMaxTokens: z.number().min(50).max(10000).optional(),
+  });
   try {
-    const { groupName, description, emails, allowJoinByLink } = req.body;
-
-    // Validate required fields
-    if (!groupName || !description || !emails || !Array.isArray(emails)) {
-      return res.status(400).json({ error: "Missing required fields" });
+    const reqBody = req.body;
+    const validate = inputSchema.safeParse(reqBody);
+    if (!validate.success) {
+      throw new Error("Validation Failed");
     }
 
     const user = req.user;
 
-    if (!user || user.role !== "TEACHER") {
-      return res.status(403).json({ error: "Not Authorized" });
-    }
+    const {
+      groupName,
+      description,
+      emails,
+      allowJoinByLink,
+      isAiEnabled,
+      type,
+      aiMaxMessages,
+      aiMaxTokens,
+    } = validate.data;
 
     const groupRedundancyCheck = await prisma.group.findFirst({
       where: {
@@ -611,6 +651,10 @@ export const createGroup = async (
         description: description,
         creatorId: user.id,
         joinByLink: allowJoinByLink,
+        type: type,
+        aiEnabled: isAiEnabled,
+        aiMaxMessages: aiMaxMessages ?? null,
+        aiMaxTokens: aiMaxTokens ?? null,
       },
     });
 
@@ -716,8 +760,7 @@ export const createGroup = async (
       successfullyAdded: successfullyAdded || [],
     });
   } catch (error) {
-    console.error("Error creating group:", error);
-    return res.status(500).json({ error: "Failed to create group" });
+    next(error);
   }
 };
 
@@ -777,6 +820,7 @@ export const getGroupMembers = async (
           },
         },
       },
+      
     });
 
     return res.status(200).json(groupMembers);

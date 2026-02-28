@@ -45,7 +45,7 @@ export const chatWithAi = async (
 ) => {
   try {
     const user = req.user;
-    const { groupId, examId, problemId, message, code, language } = req.body;
+    const { groupId, examId, problemId, message, language } = req.body;
     const now = new Date();
     const MAX_CODE_LENGTH = 3000;
     const RATE_LIMIT = 8; // seconds
@@ -151,7 +151,6 @@ export const chatWithAi = async (
       throw new Error("Conversation has been Closed");
     }
 
-    const trimmedCode = String(code).slice(0, MAX_CODE_LENGTH);
 
     let aiLimit;
 
@@ -194,14 +193,7 @@ export const chatWithAi = async (
         conversationId: convo.id,
         role: "USER",
         content:
-          "User Message: " +
-          message +
-          "\n" +
-          "Code Language: " +
-          language +
-          "\n" +
-          "Current Code: " +
-          trimmedCode,
+          "User Message: " + message + "\n" + "Code Language: " + language,
       },
     });
 
@@ -318,6 +310,7 @@ export const getAiChatStatus = async (
       status: "COMPLETED",
       message: {
         id: lastAssistantMessage.id,
+        role: lastAssistantMessage.role.toLowerCase(),
         content: lastAssistantMessage.content,
         createdAt: lastAssistantMessage.createdAt,
       },
