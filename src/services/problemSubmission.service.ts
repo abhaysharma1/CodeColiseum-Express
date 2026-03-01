@@ -134,7 +134,7 @@ export interface SubmitCodeSuccessResponse {
 
 export async function submitCodeService(
   req: Request,
-  { questionId, languageId, code }: SubmitCodeRequest
+  { questionId, languageId, code }: SubmitCodeRequest,
 ): Promise<SubmitCodeSuccessResponse> {
   const session = await auth.api.getSession({
     headers: fromNodeHeaders(req.headers),
@@ -157,6 +157,7 @@ export async function submitCodeService(
     (error as any).status = 401;
     throw error;
   }
+
 
   const JUDGE0_DOMAIN = process.env.JUDGE0_DOMAIN;
   const JUDGE0_API_KEY = process.env.JUDGE0_API_KEY;
@@ -225,13 +226,13 @@ export async function submitCodeService(
   const batchResponse = await fetch(
     `${JUDGE0_DOMAIN}/submissions/batch?base64_encoded=true&wait=false`,
     {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        'X-AUTH_TOKEN': JUDGE0_API_KEY,
+        "Content-Type": "application/json",
+        "X-AUTH_TOKEN": JUDGE0_API_KEY,
       },
       body: JSON.stringify({ submissions }),
-    }
+    },
   );
 
   if (!batchResponse.ok) {
@@ -248,8 +249,8 @@ export async function submitCodeService(
       const response = await fetch(
         `${JUDGE0_DOMAIN}/submissions/${token}?base64_encoded=true`,
         {
-          headers: { 'X-AUTH_TOKEN': JUDGE0_API_KEY },
-        }
+          headers: { "X-AUTH_TOKEN": JUDGE0_API_KEY },
+        },
       );
 
       if (!response.ok) {
@@ -329,11 +330,13 @@ export async function submitCodeService(
   // Build complexity cases
   let complexityCases: ComplexityCase[] = [];
 
-  const complexityCasesGenerator = await prisma.problemTestGenerator.findUnique({
-    where: {
-      problemId: problem.id,
+  const complexityCasesGenerator = await prisma.problemTestGenerator.findUnique(
+    {
+      where: {
+        problemId: problem.id,
+      },
     },
-  });
+  );
 
   if (!complexityCasesGenerator) {
     const error = new Error("Couldn't find complexity generator");
@@ -371,37 +374,34 @@ export async function submitCodeService(
   const times: number[] = [];
 
   // Optional warmup run (discard result)
-  await fetch(
-    `${JUDGE0_DOMAIN}/submissions?base64_encoded=true&wait=true`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-AUTH_TOKEN': JUDGE0_API_KEY,
-      },
-      body: JSON.stringify({
-        language_id: languageId,
-        source_code: encodeBase64(finalCode),
-        stdin: encodeBase64(complexityCases[0].input),
-      }),
-    }
-  );
+  await fetch(`${JUDGE0_DOMAIN}/submissions?base64_encoded=true&wait=true`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-AUTH_TOKEN": JUDGE0_API_KEY,
+    },
+    body: JSON.stringify({
+      language_id: languageId,
+      source_code: encodeBase64(finalCode),
+      stdin: encodeBase64(complexityCases[0].input),
+    }),
+  });
 
   for (const c of complexityCases) {
     const response = await fetch(
       `${JUDGE0_DOMAIN}/submissions?base64_encoded=true&wait=true`,
       {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          'X-AUTH_TOKEN': JUDGE0_API_KEY,
+          "Content-Type": "application/json",
+          "X-AUTH_TOKEN": JUDGE0_API_KEY,
         },
         body: JSON.stringify({
           language_id: languageId,
           source_code: encodeBase64(finalCode),
           stdin: encodeBase64(c.input),
         }),
-      }
+      },
     );
 
     if (!response.ok) {

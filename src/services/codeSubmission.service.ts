@@ -1,6 +1,12 @@
 import { Request } from "express";
 import prisma from "../utils/prisma";
-import { canGiveExam, validateAttempt, verifySEB, SEBError, sanitizeSourceCode } from "../utils/exam.utils";
+import {
+  canGiveExam,
+  validateAttempt,
+  verifySEB,
+  SEBError,
+  sanitizeSourceCode,
+} from "../utils/exam.utils";
 import { SubmissionStatus } from "../../generated/prisma/enums";
 
 // Base64 utility functions
@@ -129,7 +135,7 @@ export interface SubmitCodeResponse {
 // Main service function
 export async function submitCodeService(
   req: Request,
-  { examId, problemId, sourceCode, languageId }: SubmitCodeRequest
+  { examId, problemId, sourceCode, languageId }: SubmitCodeRequest,
 ): Promise<SubmitCodeResponse> {
   const language = languages.find((item) => item.id == languageId)?.name;
   const JUDGE0_API_KEY = process.env.JUDGE0_API_KEY;
@@ -203,13 +209,13 @@ export async function submitCodeService(
   const batchResponse = await fetch(
     `${JUDGE0_DOMAIN}/submissions/batch?base64_encoded=true&wait=false&fields=*`,
     {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        'X-AUTH_TOKEN': JUDGE0_API_KEY!,
+        "Content-Type": "application/json",
+        "X-AUTH_TOKEN": JUDGE0_API_KEY!,
       },
       body: JSON.stringify({ submissions }),
-    }
+    },
   );
 
   if (!batchResponse.ok) {
@@ -270,7 +276,9 @@ export async function submitCodeService(
   }));
 
   // Calculate overall status and score
-  const passedCount = finalResults.filter((r: any) => r.status === "ACCEPTED").length;
+  const passedCount = finalResults.filter(
+    (r: any) => r.status === "ACCEPTED",
+  ).length;
   const totalCount = finalResults.length;
   let score = Math.round((passedCount / totalCount) * 100);
 
@@ -278,7 +286,9 @@ export async function submitCodeService(
 
   if (finalResults.some((r: any) => r.status === "COMPILATION_ERROR")) {
     overallStatus = SubmissionStatus.COMPILE_ERROR;
-  } else if (finalResults.some((r: any) => r.status === "TIME_LIMIT_EXCEEDED")) {
+  } else if (
+    finalResults.some((r: any) => r.status === "TIME_LIMIT_EXCEEDED")
+  ) {
     overallStatus = SubmissionStatus.TIME_LIMIT;
   } else if (finalResults.some((r: any) => r.status === "RUNTIME_ERROR")) {
     overallStatus = SubmissionStatus.RUNTIME_ERROR;
@@ -295,9 +305,10 @@ export async function submitCodeService(
 
   // Complexity testing (only if all functional tests passed)
   if (passedCount === totalCount) {
-    const complexityCasesGenerator = await prisma.problemTestGenerator.findUnique({
-      where: { problemId },
-    });
+    const complexityCasesGenerator =
+      await prisma.problemTestGenerator.findUnique({
+        where: { problemId },
+      });
 
     if (complexityCasesGenerator && complexityCasesGenerator.type === "ARRAY") {
       let complexityCases: { input: string }[] = [];
@@ -322,17 +333,17 @@ export async function submitCodeService(
           const res = await fetch(
             `${JUDGE0_DOMAIN}/submissions?base64_encoded=true&wait=true`,
             {
-              method: 'POST',
+              method: "POST",
               headers: {
-                'Content-Type': 'application/json',
-                'X-AUTH_TOKEN': JUDGE0_API_KEY!,
+                "Content-Type": "application/json",
+                "X-AUTH_TOKEN": JUDGE0_API_KEY!,
               },
               body: JSON.stringify({
                 language_id: languageId,
                 source_code: encodeBase64(finalCode),
                 stdin: encodeBase64(c.input),
               }),
-            }
+            },
           );
 
           if (!res.ok) {
@@ -354,7 +365,9 @@ export async function submitCodeService(
           expectedTimeComplexity = complexityCasesGenerator.expectedComplexity;
 
           // Check if complexity is acceptable
-          const expectedKey = (complexityCasesGenerator.expectedComplexity as keyof typeof ranges) ?? ("EXP" as keyof typeof ranges);
+          const expectedKey =
+            (complexityCasesGenerator.expectedComplexity as keyof typeof ranges) ??
+            ("EXP" as keyof typeof ranges);
           const curr = ranges[complexity as keyof typeof ranges].idx;
           const exp = ranges[expectedKey].idx;
 
@@ -394,7 +407,10 @@ export async function submitCodeService(
 
   let isCurrentSubmissionFinal = false;
 
-  if (!prevFinalSubmission || prevFinalSubmission.passedTestcases <= passedCount) {
+  if (
+    !prevFinalSubmission ||
+    prevFinalSubmission.passedTestcases <= passedCount
+  ) {
     isCurrentSubmissionFinal = true;
     if (prevFinalSubmission) {
       await prisma.submission.update({
@@ -421,6 +437,139 @@ export async function submitCodeService(
       isFinal: isCurrentSubmissionFinal,
     },
   });
+
+  // ...existing code...
+
+  const groups = await prisma.group.findMany({
+    where: {
+      members: {
+        some: {
+          studentId: session.user.id,
+        },
+      },
+      examGroups: {
+        some: {
+          examId: examDetails.id,
+        },
+      },
+    },
+  });
+
+  // Update stats for each group the student belongs to
+  for (const group of groups) {
+    // Fetch existing StudentProblemStats to detect first attempt / first solve
+    const existingStudentProblemStats =
+      await prisma.studentProblemStats.findUnique({
+        where: {
+          studentId_problemId_groupId: {
+            studentId: session.user.id,
+            problemId,
+            groupId: group.id,
+          },
+        },
+      });
+
+    const isFirstAttempt = !existingStudentProblemStats;
+    const isFirstSolve =
+      overallStatus === SubmissionStatus.ACCEPTED &&
+      !existingStudentProblemStats?.solved;
+
+    // 1. Upsert StudentProblemStats
+    await prisma.studentProblemStats.upsert({
+      where: {
+        studentId_problemId_groupId: {
+          studentId: session.user.id,
+          problemId,
+          groupId: group.id,
+        },
+      },
+      create: {
+        studentId: session.user.id,
+        problemId,
+        groupId: group.id,
+        attempts: 1,
+        solved: overallStatus === SubmissionStatus.ACCEPTED,
+      },
+      update: {
+        attempts: { increment: 1 },
+        // Only flip solved to true, never back to false
+        ...(isFirstSolve && { solved: true }),
+      },
+    });
+
+    // 2. Upsert GroupProblemStats
+    const existingGroupStats = await prisma.groupProblemStats.findUnique({
+      where: {
+        groupId_problemId: {
+          groupId: group.id,
+          problemId,
+        },
+      },
+    });
+
+    if (!existingGroupStats) {
+      await prisma.groupProblemStats.create({
+        data: {
+          groupId: group.id,
+          problemId,
+          totalStudents: 0, // managed separately (group member count)
+          attemptedCount: 1,
+          acceptedCount: isFirstSolve ? 1 : 0,
+          totalAttempts: 1,
+          avgRuntime: totalTimeTaken,
+          avgMemory: totalMemoryTaken,
+        },
+      });
+    } else {
+      const newTotalAttempts = existingGroupStats.totalAttempts + 1;
+      const newAvgRuntime =
+        (existingGroupStats.avgRuntime * existingGroupStats.totalAttempts +
+          totalTimeTaken) /
+        newTotalAttempts;
+      const newAvgMemory =
+        (existingGroupStats.avgMemory * existingGroupStats.totalAttempts +
+          totalMemoryTaken) /
+        newTotalAttempts;
+
+      await prisma.groupProblemStats.update({
+        where: {
+          groupId_problemId: {
+            groupId: group.id,
+            problemId,
+          },
+        },
+        data: {
+          totalAttempts: { increment: 1 },
+          ...(isFirstAttempt && { attemptedCount: { increment: 1 } }),
+          ...(isFirstSolve && { acceptedCount: { increment: 1 } }),
+          avgRuntime: newAvgRuntime,
+          avgMemory: newAvgMemory,
+        },
+      });
+    }
+
+    // 3. Upsert StudentOverallStats (attempt tracking only — scores updated at exam result time)
+    await prisma.studentOverallStats.upsert({
+      where: {
+        groupId_studentId: {
+          groupId: group.id,
+          studentId: session.user.id,
+        },
+      },
+      create: {
+        groupId: group.id,
+        studentId: session.user.id,
+        totalScore: 0,
+        totalExams: 0,
+        avgScore: 0,
+        totalAttempts: 1,
+      },
+      update: {
+        totalAttempts: { increment: 1 },
+      },
+    });
+  }
+
 
   return {
     success: true,

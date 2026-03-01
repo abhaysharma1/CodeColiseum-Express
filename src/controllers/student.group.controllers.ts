@@ -1,5 +1,6 @@
 import prisma from "@/utils/prisma";
 import { NextFunction, Request, Response } from "express";
+import { groupType } from "generated/prisma/enums";
 
 export async function getAllGroups(
   req: Request,
@@ -9,45 +10,38 @@ export async function getAllGroups(
   try {
     const user = req.user;
 
-    const { take, skip, searchValue } = req.query;
+    const { take, skip, searchValue, groupType } = req.query;
 
-    let groups;
 
-    if (!searchValue || searchValue == "") {
-      groups = await prisma.group.findMany({
-        where: {
-          members: {
-            some: {
-              studentId: user.id,
-            },
-          },
-        },
-        take: Number(take),
-        skip: Number(skip),
-        include: {
-          creator: true,
-        },
-        orderBy: { createdAt: "desc" },
-      });
-    } else {
-      groups = await prisma.group.findMany({
-        where: {
-          name: { contains: String(searchValue), mode: "insensitive" },
-          members: {
-            some: {
-              studentId: user.id,
-            },
-          },
-        },
-        take: Number(take),
-        skip: Number(skip),
+    let where: any = {};
 
-        include: {
-          creator: true,
-        },
-        orderBy: { createdAt: "desc" },
-      });
+    where.members = {
+      some: {
+        studentId: user.id,
+      },
+    };
+
+    if (searchValue) {
+      const searchString = String(searchValue);
+      where.OR = [
+        { name: { contains: searchString, mode: "insensitive" } },
+        { description: { contains: searchString, mode: "insensitive" } },
+      ];
     }
+
+    if (groupType) {
+      where.type = String(groupType) as groupType;
+    }
+
+    const groups = await prisma.group.findMany({
+      where: where,
+      take: Number(take),
+      skip: Number(skip),
+      include: {
+        creator: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
 
     return res.status(200).json(groups);
   } catch (error) {
