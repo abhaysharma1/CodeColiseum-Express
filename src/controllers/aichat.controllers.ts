@@ -33,7 +33,6 @@ export const isAiEnabledAndGetGroupId = async (
 
     return res.status(200).json({ enabled: true, groupId: group[0].id });
   } catch (error) {
-    console.log(error);
     next(error);
   }
 };
@@ -241,7 +240,6 @@ export const chatWithAi = async (
         task,
       });
     } catch (error) {
-      console.log(error);
       throw new Error("Couldn't create Task");
     }
 

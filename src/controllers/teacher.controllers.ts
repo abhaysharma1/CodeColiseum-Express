@@ -273,7 +273,6 @@ export const getAllGroups = async (req: Request, res: Response) => {
 
   let where: any = {};
 
-  console.log(req.query);
 
   if (groupType == "CLASS" || groupType == "LAB") {
     where.type = groupType;
@@ -287,7 +286,6 @@ export const getAllGroups = async (req: Request, res: Response) => {
     ];
   }
 
-  console.log(where);
 
   groups = await prisma.group.findMany({
     where: {

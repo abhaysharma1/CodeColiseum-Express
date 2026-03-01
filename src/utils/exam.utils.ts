@@ -110,7 +110,6 @@ export class SEBError extends Error {
 }
 
 export function verifySEB(req: Request) {
-  console.log("---- SEB VERIFY START ----");
 
   const CONFIG_KEY = process.env.SEB_CONFIG_KEY; // RAW config key from SEB tool
   const receivedHash = req.headers["x-safeexambrowser-configkeyhash"] as string;
@@ -126,9 +125,7 @@ export function verifySEB(req: Request) {
   // 🔐 get absolute URL (without fragment)
   // const url = req.nextUrl.origin + req.nextUrl.pathname + req.nextUrl.search;
 
-  console.log("URL:", url);
-  console.log("ConfigKey:", CONFIG_KEY);
-  console.log("Received:", receivedHash);
+
 
   // 🔐 generate expected hash
   const expectedHash = crypto
@@ -136,15 +133,11 @@ export function verifySEB(req: Request) {
     .update(url + CONFIG_KEY, "utf8")
     .digest("hex");
 
-  console.log("Expected:", expectedHash);
 
   if (expectedHash !== receivedHash) {
-    console.log("❌ SEB HASH INVALID");
     throw new SEBError("Invalid SEB configuration");
   }
 
-  console.log("✅ SEB VERIFIED");
-  console.log("---- SEB VERIFY END ----");
 }
 
 

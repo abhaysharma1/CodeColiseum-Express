@@ -89,7 +89,6 @@ export async function enqueuePracticeAIReview({
       task,
     });
   } catch (error) {
-    console.log(error)
     throw new Error("Couldn't create Task");
   }
 
