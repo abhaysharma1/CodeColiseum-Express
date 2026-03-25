@@ -1,5 +1,4 @@
 import {
-	LEGACY_ROLE_FALLBACK_PERMISSIONS,
 	PERMISSION_ALIASES,
 	PERMISSIONS,
 	type PermissionKey
@@ -8,16 +7,6 @@ import prisma from "@/utils/prisma";
 
 const CACHE_TTL_SECONDS = 30;
 const CACHE_TTL_MS = CACHE_TTL_SECONDS * 1000;
-
-function isLegacyFallbackEnabled(): boolean {
-	const flag = process.env.RBAC_ENABLE_LEGACY_FALLBACK;
-
-	if (flag === undefined || flag === "") {
-		return true;
-	}
-
-	return flag.toLowerCase() === "true";
-}
 
 type CacheEntry = {
 	value: boolean;
@@ -96,14 +85,10 @@ function hasRolePermission(permissionKeys: string[], rolePermissions: Array<{ pe
 	return permissionKeys.some((key) => allowedPermissionKeys.has(key.toLowerCase()));
 }
 
-async function hasGlobalPermission(userId: string, permissionKeys: string[]): Promise<{
-	allowed: boolean;
-	legacyRole: "TEACHER" | "STUDENT" | "ADMIN" | null;
-}> {
+async function hasGlobalPermission(userId: string, permissionKeys: string[]): Promise<boolean> {
 	const user = await prisma.user.findUnique({
 		where: { id: userId },
 		select: {
-			role: true,
 			globalRole: {
 				select: {
 					permissions: {
@@ -120,19 +105,11 @@ async function hasGlobalPermission(userId: string, permissionKeys: string[]): Pr
 		}
 	});
 
-	const legacyRole =
-		user?.role === "TEACHER" || user?.role === "STUDENT" || user?.role === "ADMIN"
-			? user.role
-			: null;
-
 	if (!user?.globalRole?.permissions?.length) {
-		return { allowed: false, legacyRole };
+		return false;
 	}
 
-	return {
-		allowed: hasRolePermission(permissionKeys, user.globalRole.permissions),
-		legacyRole
-	};
+	return hasRolePermission(permissionKeys, user.globalRole.permissions);
 }
 
 async function hasOrganizationPermission(): Promise<boolean> {
@@ -178,22 +155,6 @@ async function hasGroupPermission(
 	return hasRolePermission(permissionKeys, member.role.permissions);
 }
 
-function hasLegacyFallbackPermission(
-	legacyRole: "TEACHER" | "STUDENT" | "ADMIN" | null,
-	canonicalPermission: string
-): boolean {
-	if (!isLegacyFallbackEnabled()) {
-		return false;
-	}
-
-	if (!legacyRole) {
-		return false;
-	}
-
-	const fallbackSet = LEGACY_ROLE_FALLBACK_PERMISSIONS[legacyRole];
-	return fallbackSet.has(canonicalPermission as PermissionKey);
-}
-
 export async function hasPermission(
 	userId: string,
 	permission: string,
@@ -207,9 +168,8 @@ export async function hasPermission(
 	}
 
 	const permissionKeys = getPermissionLookupKeys(permission);
-	const canonicalPermission = permissionKeys[0];
 
-	const { allowed: hasGlobalAccess, legacyRole } = await hasGlobalPermission(userId, permissionKeys);
+	const hasGlobalAccess = await hasGlobalPermission(userId, permissionKeys);
 
 	if (hasGlobalAccess) {
 		await permissionCache.set(cacheKey, true, CACHE_TTL_SECONDS);
@@ -230,10 +190,8 @@ export async function hasPermission(
 		}
 	}
 
-	const hasLegacyPermission = hasLegacyFallbackPermission(legacyRole, canonicalPermission);
-	await permissionCache.set(cacheKey, hasLegacyPermission, CACHE_TTL_SECONDS);
-
-	return hasLegacyPermission;
+	await permissionCache.set(cacheKey, false, CACHE_TTL_SECONDS);
+	return false;
 }
 
 export async function clearPermissionCacheForUser(_userId: string): Promise<void> {

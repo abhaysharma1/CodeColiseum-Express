@@ -4,6 +4,7 @@ import prisma from "./prisma";
 import { auth } from "./auth";
 import { fromNodeHeaders } from "better-auth/node";
 import crypto from "crypto";
+import { GLOBAL_ROLE_IDS } from "@/permissions/role.constants";
 
 export async function isStudent(req: Request) {
   const session = await auth.api.getSession({
@@ -14,7 +15,12 @@ export async function isStudent(req: Request) {
     throw new Error("Unauthorized");
   }
 
-  if (session.user.role !== "STUDENT") {
+  const dbUser = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { globalRoleId: true },
+  });
+
+  if (dbUser?.globalRoleId !== GLOBAL_ROLE_IDS.ORG_STUDENT) {
     throw new Error("Forbidden: Student access required");
   }
 

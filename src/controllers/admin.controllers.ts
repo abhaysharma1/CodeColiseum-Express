@@ -10,6 +10,7 @@ import prisma from "@/utils/prisma";
 import { auth } from "@/utils/auth";
 import axios from "axios";
 import { hashPassword } from "better-auth/crypto";
+import { GLOBAL_ROLE_IDS } from "@/permissions/role.constants";
 
 // Types
 interface JudgeStatus {
@@ -116,19 +117,37 @@ const bulkSignUpSchema = z.object({
     .array(z.string().email("Invalid email address"))
     .min(1, "At least one email is required")
     .max(500, "Cannot sign up more than 500 users at once"),
-  role: z.enum(["TEACHER", "STUDENT", "ADMIN"]).optional().default("STUDENT"),
+  roleId: z
+    .enum([
+      GLOBAL_ROLE_IDS.ORG_STUDENT,
+      GLOBAL_ROLE_IDS.ORG_TEACHER,
+      GLOBAL_ROLE_IDS.PLATFORM_ADMIN,
+    ])
+    .optional(),
 });
 
 const adminSingleSignUpSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(120),
   email: z.string().trim().email("Invalid email address"),
   password: z.string().min(8, "Password must be at least 8 characters").max(128),
-  role: z.enum(["TEACHER", "STUDENT", "ADMIN"]),
+  roleId: z
+    .enum([
+      GLOBAL_ROLE_IDS.ORG_STUDENT,
+      GLOBAL_ROLE_IDS.ORG_TEACHER,
+      GLOBAL_ROLE_IDS.PLATFORM_ADMIN,
+    ])
+    .optional(),
 });
 
 const adminAssignRoleSchema = z.object({
   email: z.string().trim().email("Invalid email address"),
-  role: z.enum(["TEACHER", "STUDENT", "ADMIN"]),
+  roleId: z
+    .enum([
+      GLOBAL_ROLE_IDS.ORG_STUDENT,
+      GLOBAL_ROLE_IDS.ORG_TEACHER,
+      GLOBAL_ROLE_IDS.PLATFORM_ADMIN,
+    ])
+    .optional(),
 });
 
 const adminResetPasswordSchema = z.object({
@@ -137,13 +156,15 @@ const adminResetPasswordSchema = z.object({
   revokeSessions: z.boolean().optional().default(true),
 });
 
-type LegacyUserRole = "ADMIN" | "TEACHER" | "STUDENT";
+function resolveGlobalRoleId(input: {
+  roleId?: string;
+}): string {
+  if (input.roleId) {
+    return input.roleId;
+  }
 
-const GLOBAL_ROLE_ID_BY_ROLE: Record<LegacyUserRole, string> = {
-  ADMIN: "role_platform_admin",
-  TEACHER: "role_org_teacher",
-  STUDENT: "role_org_student",
-};
+  return GLOBAL_ROLE_IDS.ORG_STUDENT;
+}
 
 const validateComplexitySchema = z.object({
   problemId: z.string(),
@@ -680,7 +701,8 @@ export const bulkSignUp = async (
       });
     }
 
-    const { emails, role } = validation.data;
+    const { emails, roleId } = validation.data;
+    const globalRoleId = resolveGlobalRoleId({ roleId });
 
     const results: Array<{
       email: string;
@@ -698,14 +720,13 @@ export const bulkSignUp = async (
             email,
             password,
             name,
-            role,
           } as any,
           headers: new Headers(),
         });
 
         await prisma.user.update({
           where: { email },
-          data: { emailVerified: true, isOnboarded: true },
+          data: { emailVerified: true, isOnboarded: true, globalRoleId },
         });
 
         results.push({ email, result: "created" });
@@ -742,7 +763,8 @@ export const adminSingleSignUp = async (
       });
     }
 
-    const { name, email, password, role } = validation.data;
+    const { name, email, password, roleId } = validation.data;
+    const globalRoleId = resolveGlobalRoleId({ roleId });
     const normalizedEmail = email.toLowerCase();
 
     try {
@@ -751,7 +773,6 @@ export const adminSingleSignUp = async (
           email: normalizedEmail,
           password,
           name,
-          role,
         } as any,
         headers: new Headers(),
       });
@@ -774,21 +795,17 @@ export const adminSingleSignUp = async (
       });
     }
 
-    const globalRoleId = GLOBAL_ROLE_ID_BY_ROLE[role];
-
     const createdUser = await prisma.user.update({
       where: { email: normalizedEmail },
       data: {
         emailVerified: true,
         isOnboarded: true,
-        role,
         globalRoleId,
       },
       select: {
         id: true,
         name: true,
         email: true,
-        role: true,
         globalRoleId: true,
       },
     });
@@ -817,9 +834,9 @@ export const assignUserRoleByEmail = async (
       });
     }
 
-    const { email, role } = validation.data;
+    const { email, roleId } = validation.data;
     const normalizedEmail = email.toLowerCase();
-    const globalRoleId = GLOBAL_ROLE_ID_BY_ROLE[role];
+    const globalRoleId = resolveGlobalRoleId({ roleId });
 
     const user = await prisma.user.findUnique({
       where: { email: normalizedEmail },
@@ -835,14 +852,12 @@ export const assignUserRoleByEmail = async (
     const updatedUser = await prisma.user.update({
       where: { id: user.id },
       data: {
-        role,
         globalRoleId,
       },
       select: {
         id: true,
         name: true,
         email: true,
-        role: true,
         globalRoleId: true,
       },
     });

@@ -19,8 +19,6 @@ const ROLE_IDS = {
   GROUP_MEMBER: "role_group_member"
 } as const;
 
-type LegacyUserRole = "ADMIN" | "TEACHER" | "STUDENT";
-
 function isTransientPrismaError(error: unknown): boolean {
   const code = (error as { code?: string })?.code;
   return code === "P1017";
@@ -199,43 +197,6 @@ async function seedRoles(permissionIdByKey: Map<string, string>) {
   }
 }
 
-async function backfillGlobalRoles() {
-  const roleMapping: Record<LegacyUserRole, string> = {
-    ADMIN: ROLE_IDS.PLATFORM_ADMIN,
-    TEACHER: ROLE_IDS.ORG_TEACHER,
-    STUDENT: ROLE_IDS.ORG_STUDENT
-  };
-
-  const users: Array<{ id: string; role: LegacyUserRole | null }> = await prisma.user.findMany({
-    where: {
-      globalRoleId: null,
-      role: { not: null }
-    },
-    select: {
-      id: true,
-      role: true
-    }
-  });
-
-  const updates = users
-    .map((user) => {
-      const role = user.role as LegacyUserRole | null;
-      if (!role || !roleMapping[role]) {
-        return null;
-      }
-
-      return prisma.user.update({
-        where: { id: user.id },
-        data: { globalRoleId: roleMapping[role] }
-      });
-    })
-    .filter((query): query is ReturnType<typeof prisma.user.update> => Boolean(query));
-
-  if (updates.length > 0) {
-    await prisma.$transaction(updates);
-  }
-}
-
 async function backfillGroupMemberRoles() {
   const groupMembers = await prisma.groupMember.findMany({
     include: {
@@ -278,7 +239,6 @@ async function backfillGroupMemberRoles() {
 async function main() {
   const permissionIdByKey = await seedPermissions();
   await seedRoles(permissionIdByKey);
-  await backfillGlobalRoles();
   await backfillGroupMemberRoles();
 }
 

@@ -32,16 +32,16 @@ export const auth = betterAuth({
   },
   user: {
     additionalFields: {
-      role: {
-        type: "string",
-        required: true,
-        input: true,
-      },
       isOnboarded: {
         type: "boolean",
         required: false,
         input: true,
         defaultValue: false,
+      },
+      globalRoleId: {
+        type: "string",
+        required: false,
+        input: false,
       },
     },
   },

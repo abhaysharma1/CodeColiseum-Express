@@ -11,6 +11,7 @@ import studentRouter from "@/routes/student.routes";
 import adminRouter from "@/routes/admin.route";
 import internalRouter from "@/routes/internal.routes"
 import permissionsRouter from "@/routes/permissions.route";
+import publicAuthRouter from "@/routes/public.auth.route";
 
 const app: Application = express();
 
@@ -50,6 +51,8 @@ app.use("/problems", problemRouter);
 app.use("/internal",internalRouter)
 
 app.use("/permissions", permissionsRouter);
+
+app.use("/public-auth", publicAuthRouter);
 
 app.use((req: Request, res: Response) => {
   res.status(404).json({ message: "Resource not found" });

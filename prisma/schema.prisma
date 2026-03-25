@@ -13,7 +13,6 @@ model User {
   id            String    @id @default(uuid())
   name          String
   email         String    @unique
-  role          UserRole?
   isOnboarded   Boolean   @default(false)
   emailVerified Boolean   @default(false)
   image         String?
@@ -43,12 +42,6 @@ model User {
   @@index([email])
   @@index([globalRoleId])
   @@map("user")
-}
-
-enum UserRole {
-  TEACHER
-  STUDENT
-  ADMIN
 }
 
 model Session {

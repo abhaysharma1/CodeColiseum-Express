@@ -1,4 +1,5 @@
 import { PERMISSIONS } from "@/permissions/permission.constants";
+import { GLOBAL_ROLE_IDS, GROUP_ROLE_IDS } from "@/permissions/role.constants";
 import { hasPermission } from "@/permissions/permission.service";
 import prisma from "@/utils/prisma";
 import { sendBatchToSQS } from "@/utils/sqs";
@@ -36,7 +37,7 @@ async function canAccessGroupWithFallback(
   return allowed || creatorId === userId;
 }
 
-const DEFAULT_GROUP_MEMBER_ROLE_ID = "role_group_member";
+const DEFAULT_GROUP_MEMBER_ROLE_ID = GROUP_ROLE_IDS.MEMBER;
 
 export const fetchAllExams = async (
   req: Request,
@@ -437,7 +438,7 @@ export const getExamResults = async (
   try {
     const user = req.user;
 
-    if (!user || user.role !== "TEACHER") {
+    if (!user) {
       return res
         .status(403)
         .json({ error: "Not authorized. Teacher access required." });
@@ -803,7 +804,7 @@ export const createGroup = async (
       data: {
         groupId: newGroup.id,
         userId: user.id,
-        roleId: "role_group_owner",
+        roleId: GROUP_ROLE_IDS.OWNER,
       },
     });
 
@@ -839,7 +840,7 @@ export const createGroup = async (
 
     // Filter students and check for existing memberships
     const studentsToAdd = users.filter((user) => {
-      if (user.role === "TEACHER") {
+      if (user.globalRoleId !== GLOBAL_ROLE_IDS.ORG_STUDENT) {
         notStudents.push({ email: user.email, name: user.name });
         return false;
       }
@@ -1009,7 +1010,7 @@ export const addMemberToGroup = async (
 
     const user = req.user;
 
-    if (!user || user.role !== "TEACHER") {
+    if (!user) {
       return res.status(403).json({ error: "Not Authorized" });
     }
 
@@ -1049,7 +1050,7 @@ export const addMemberToGroup = async (
         where: { email },
       });
 
-      if (!student || student.role !== "STUDENT") {
+      if (!student || student.globalRoleId !== GLOBAL_ROLE_IDS.ORG_STUDENT) {
         notFoundStudents.push(email);
       } else {
         studentIds.push(student.id);
