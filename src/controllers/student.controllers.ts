@@ -18,7 +18,7 @@ export async function getDashboardData(
       where: {
         members: {
           some: {
-            studentId: user.id,
+            userId: user.id,
           },
         },
       },
@@ -34,7 +34,7 @@ export async function getDashboardData(
             group: {
               members: {
                 some: {
-                  studentId: user.id,
+                  userId: user.id,
                 },
               },
             },

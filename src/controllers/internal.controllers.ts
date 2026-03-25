@@ -181,12 +181,12 @@ export async function finalizeExams(
         // 6. Update StudentOverallStats for each student in this group
         const groupMembers = await prisma.groupMember.findMany({
           where: { groupId },
-          select: { studentId: true },
+          select: { userId: true },
         });
 
         for (const member of groupMembers) {
           const studentResults = allResults.filter(
-            (r) => r.userId === member.studentId,
+            (r) => r.userId === member.userId,
           );
 
           const studentTotalExams = [
@@ -205,12 +205,12 @@ export async function finalizeExams(
             where: {
               groupId_studentId: {
                 groupId,
-                studentId: member.studentId,
+                studentId: member.userId,
               },
             },
             create: {
               groupId,
-              studentId: member.studentId,
+              studentId: member.userId,
               totalScore: studentTotalScore,
               totalExams: studentTotalExams,
               avgScore: studentAvgScore,

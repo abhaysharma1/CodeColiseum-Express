@@ -9,6 +9,9 @@ import {
   validateComplexityCases,
   validateProblem,
   bulkSignUp,
+  adminSingleSignUp,
+  assignUserRoleByEmail,
+  resetUserPasswordByEmail,
 } from "@/controllers/admin.controllers";
 
 const router = Router();
@@ -34,5 +37,8 @@ router.post("/validate-complexity-cases", validateComplexityCases);
 router.post("/validate-problem", validateProblem);
 
 router.post("/bulkSignup", bulkSignUp);
+router.post("/single-signup", adminSingleSignUp);
+router.patch("/assign-role", assignUserRoleByEmail);
+router.post("/reset-password-by-email", resetUserPasswordByEmail);
 
 export default router;

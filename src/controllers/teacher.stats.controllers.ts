@@ -1,7 +1,18 @@
 // ...existing code...
 
+import { PERMISSIONS } from "@/permissions/permission.constants";
+import { hasPermission } from "@/permissions/permission.service";
 import prisma from "@/utils/prisma";
 import { NextFunction, Request, Response } from "express";
+
+async function canViewGroupAnalytics(
+  userId: string,
+  groupId: string,
+  creatorId: string,
+): Promise<boolean> {
+  const allowed = await hasPermission(userId, PERMISSIONS.ANALYTICS_VIEW, groupId);
+  return allowed || creatorId === userId;
+}
 
 export const getGroupOverallStats = async (
   req: Request,
@@ -17,7 +28,7 @@ export const getGroupOverallStats = async (
     const group = await prisma.group.findUnique({ where: { id: groupId } });
 
     if (!group) return res.status(404).json({ error: "Group not found" });
-    if (group.creatorId !== user.id)
+    if (!(await canViewGroupAnalytics(user.id, groupId, group.creatorId)))
       return res.status(403).json({ error: "Not authorized" });
 
     const stats = await prisma.groupOverallStats.findUnique({
@@ -45,7 +56,7 @@ export const getGroupProblemStats = async (
     const group = await prisma.group.findUnique({ where: { id: groupId } });
 
     if (!group) return res.status(404).json({ error: "Group not found" });
-    if (group.creatorId !== user.id)
+    if (!(await canViewGroupAnalytics(user.id, groupId, group.creatorId)))
       return res.status(403).json({ error: "Not authorized" });
 
     const stats = await prisma.groupProblemStats.findMany({
@@ -92,7 +103,7 @@ export const getStudentOverallStats = async (
     const group = await prisma.group.findUnique({ where: { id: groupId } });
 
     if (!group) return res.status(404).json({ error: "Group not found" });
-    if (group.creatorId !== user.id)
+    if (!(await canViewGroupAnalytics(user.id, groupId, group.creatorId)))
       return res.status(403).json({ error: "Not authorized" });
 
     const stats = await prisma.studentOverallStats.findMany({
@@ -133,7 +144,7 @@ export const getStudentProblemStats = async (
     const group = await prisma.group.findUnique({ where: { id: groupId } });
 
     if (!group) return res.status(404).json({ error: "Group not found" });
-    if (group.creatorId !== user.id)
+    if (!(await canViewGroupAnalytics(user.id, groupId, group.creatorId)))
       return res.status(403).json({ error: "Not authorized" });
 
     const stats = await prisma.studentProblemStats.findMany({

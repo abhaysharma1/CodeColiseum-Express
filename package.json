@@ -13,6 +13,9 @@
     "lint": "eslint . --ext .ts",
     "docker:build": "docker build -t codecoliseum-express ."
   },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
@@ -27,6 +30,7 @@
     "prisma": "^7.4.0",
     "ts-jest": "^29.4.6",
     "ts-node-dev": "^2.0.0",
+    "tsx": "^4.20.5",
     "tsc-alias": "^1.8.16",
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.9.3"

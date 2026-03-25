@@ -444,7 +444,7 @@ export async function submitCodeService(
     where: {
       members: {
         some: {
-          studentId: session.user.id,
+          userId: session.user.id,
         },
       },
       examGroups: {

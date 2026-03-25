@@ -2,6 +2,7 @@ import { Request } from "express";
 import prisma from "../utils/prisma";
 import { auth } from "../utils/auth";
 import { fromNodeHeaders } from "better-auth/node";
+import axios from "axios";
 
 /* ----------------------------- Types ----------------------------- */
 
@@ -94,7 +95,7 @@ export interface RunCodeResponse {
 
 export async function runCodeService(
   req: Request,
-  { questionId, languageId, code }: RunCodeRequest
+  { questionId, languageId, code }: RunCodeRequest,
 ): Promise<RunCodeResponse> {
   const session = await auth.api.getSession({
     headers: fromNodeHeaders(req.headers),
@@ -166,24 +167,22 @@ export async function runCodeService(
     throw new Error("Judge0 environment variables missing");
   }
 
-  const batchResponse = await fetch(
-    `${JUDGE0_DOMAIN}/submissions/batch?base64_encoded=true&wait=false&fields=*`,
+  const batchResponse = await axios.post(
+    `${JUDGE0_DOMAIN}/submissions/batch?base64_encoded=true&wait=false`,
+    { submissions },
     {
-      method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'X-AUTH_TOKEN': API_KEY,
+        "Content-Type": "application/json",
+        "X-AUTH_TOKEN": API_KEY,
       },
-      body: JSON.stringify({ submissions }),
-    }
+    },
   );
 
-  if (!batchResponse.ok) {
+  const tokens: string[] = batchResponse.data.map((s: any) => s.token);
+
+  if (batchResponse.status > 400) {
     throw new Error("Failed to submit to Judge0");
   }
-
-  const batchData = await batchResponse.json();
-  const tokens: string[] = batchData.map((s: any) => s.token);
 
   /* --------------------------- Poll --------------------------- */
 
@@ -193,7 +192,7 @@ export async function runCodeService(
         `${JUDGE0_DOMAIN}/submissions/${token}?base64_encoded=true&fields=*`,
         {
           headers: {
-            'X-AUTH_TOKEN': API_KEY,
+            "X-AUTH_TOKEN": API_KEY,
           },
         },
       );
@@ -207,7 +206,7 @@ export async function runCodeService(
 
       if (decoded.status.id > 2) return decoded;
 
-      await new Promise((r) => setTimeout(r, 500));
+      await new Promise((r) => setTimeout(r, 200));
     }
 
     throw new Error(`Submission ${token} timed out`);

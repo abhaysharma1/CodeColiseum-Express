@@ -21,7 +21,7 @@ export const isAiEnabledAndGetGroupId = async (
           },
           members: {
             some: {
-              studentId: user.id,
+              userId: user.id,
             },
           },
           aiEnabled: true,
@@ -69,7 +69,7 @@ export const chatWithAi = async (
         id: groupId,
         members: {
           some: {
-            studentId: user.id,
+            userId: user.id,
           },
         },
       },

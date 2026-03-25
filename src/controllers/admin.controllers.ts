@@ -9,6 +9,7 @@ import { Prisma } from "../../generated/prisma/client";
 import prisma from "@/utils/prisma";
 import { auth } from "@/utils/auth";
 import axios from "axios";
+import { hashPassword } from "better-auth/crypto";
 
 // Types
 interface JudgeStatus {
@@ -117,6 +118,32 @@ const bulkSignUpSchema = z.object({
     .max(500, "Cannot sign up more than 500 users at once"),
   role: z.enum(["TEACHER", "STUDENT", "ADMIN"]).optional().default("STUDENT"),
 });
+
+const adminSingleSignUpSchema = z.object({
+  name: z.string().trim().min(1, "Name is required").max(120),
+  email: z.string().trim().email("Invalid email address"),
+  password: z.string().min(8, "Password must be at least 8 characters").max(128),
+  role: z.enum(["TEACHER", "STUDENT", "ADMIN"]),
+});
+
+const adminAssignRoleSchema = z.object({
+  email: z.string().trim().email("Invalid email address"),
+  role: z.enum(["TEACHER", "STUDENT", "ADMIN"]),
+});
+
+const adminResetPasswordSchema = z.object({
+  email: z.string().trim().email("Invalid email address"),
+  newPassword: z.string().min(8, "Password must be at least 8 characters").max(128),
+  revokeSessions: z.boolean().optional().default(true),
+});
+
+type LegacyUserRole = "ADMIN" | "TEACHER" | "STUDENT";
+
+const GLOBAL_ROLE_ID_BY_ROLE: Record<LegacyUserRole, string> = {
+  ADMIN: "role_platform_admin",
+  TEACHER: "role_org_teacher",
+  STUDENT: "role_org_student",
+};
 
 const validateComplexitySchema = z.object({
   problemId: z.string(),
@@ -695,6 +722,212 @@ export const bulkSignUp = async (
     const statusCode = failed.length === 0 ? 201 : failed.length === results.length ? 400 : 207;
 
     res.status(statusCode).json({ success: failed.length === 0, results });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const adminSingleSignUp = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const validation = adminSingleSignUpSchema.safeParse(req.body);
+
+    if (!validation.success) {
+      return res.status(400).json({
+        error: "Validation Error",
+        details: validation.error.flatten(),
+      });
+    }
+
+    const { name, email, password, role } = validation.data;
+    const normalizedEmail = email.toLowerCase();
+
+    try {
+      await auth.api.signUpEmail({
+        body: {
+          email: normalizedEmail,
+          password,
+          name,
+          role,
+        } as any,
+        headers: new Headers(),
+      });
+    } catch (error: any) {
+      const message =
+        error?.body?.message ??
+        error?.message ??
+        "Failed to create account";
+
+      if (/already exists|another email/i.test(String(message))) {
+        return res.status(409).json({
+          error: "User already exists",
+          message,
+        });
+      }
+
+      return res.status(400).json({
+        error: "Failed to create account",
+        message,
+      });
+    }
+
+    const globalRoleId = GLOBAL_ROLE_ID_BY_ROLE[role];
+
+    const createdUser = await prisma.user.update({
+      where: { email: normalizedEmail },
+      data: {
+        emailVerified: true,
+        isOnboarded: true,
+        role,
+        globalRoleId,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        globalRoleId: true,
+      },
+    });
+
+    return res.status(201).json({
+      success: true,
+      user: createdUser,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const assignUserRoleByEmail = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const validation = adminAssignRoleSchema.safeParse(req.body);
+
+    if (!validation.success) {
+      return res.status(400).json({
+        error: "Validation Error",
+        details: validation.error.flatten(),
+      });
+    }
+
+    const { email, role } = validation.data;
+    const normalizedEmail = email.toLowerCase();
+    const globalRoleId = GLOBAL_ROLE_ID_BY_ROLE[role];
+
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+      select: { id: true },
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        error: "User not found",
+      });
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        role,
+        globalRoleId,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        globalRoleId: true,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      user: updatedUser,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const resetUserPasswordByEmail = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const validation = adminResetPasswordSchema.safeParse(req.body);
+
+    if (!validation.success) {
+      return res.status(400).json({
+        error: "Validation Error",
+        details: validation.error.flatten(),
+      });
+    }
+
+    const { email, newPassword, revokeSessions } = validation.data;
+    const normalizedEmail = email.toLowerCase();
+
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+      select: {
+        id: true,
+        email: true,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        error: "User not found",
+      });
+    }
+
+    const hashedPassword = await hashPassword(newPassword);
+
+    const credentialAccount = await prisma.account.findFirst({
+      where: {
+        userId: user.id,
+        providerId: "credential",
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (credentialAccount) {
+      await prisma.account.update({
+        where: { id: credentialAccount.id },
+        data: { password: hashedPassword },
+      });
+    } else {
+      await prisma.account.create({
+        data: {
+          userId: user.id,
+          providerId: "credential",
+          accountId: user.id,
+          password: hashedPassword,
+        },
+      });
+    }
+
+    if (revokeSessions) {
+      await prisma.session.deleteMany({
+        where: { userId: user.id },
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Password updated successfully",
+      email: user.email,
+      sessionsRevoked: revokeSessions,
+    });
   } catch (error) {
     next(error);
   }

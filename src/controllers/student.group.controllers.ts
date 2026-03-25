@@ -17,7 +17,7 @@ export async function getAllGroups(
 
     where.members = {
       some: {
-        studentId: user.id,
+        userId: user.id,
       },
     };
 
@@ -68,9 +68,9 @@ export async function getGroupData(
 
     const canAccessGroup = await prisma.groupMember.findUnique({
       where: {
-        groupId_studentId: {
+        groupId_userId: {
           groupId: groupData.id,
-          studentId: user.id,
+          userId: user.id,
         },
       },
     });
@@ -103,9 +103,9 @@ export async function getGroupExams(
 
     const canAccessGroup = await prisma.groupMember.findUnique({
       where: {
-        groupId_studentId: {
+        groupId_userId: {
           groupId: groupData.id,
-          studentId: user.id,
+          userId: user.id,
         },
       },
     });
@@ -174,9 +174,9 @@ export async function getGroupCreator(
 
     const canAccessGroup = await prisma.groupMember.findUnique({
       where: {
-        groupId_studentId: {
+        groupId_userId: {
           groupId: groupData.id,
-          studentId: user.id,
+          userId: user.id,
         },
       },
     });

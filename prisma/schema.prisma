@@ -19,8 +19,10 @@ model User {
   image         String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+  globalRoleId  String?
 
   // Relations
+  globalRole  Role?            @relation(fields: [globalRoleId], references: [id], onDelete: SetNull)
   exams       Exam[]           @relation("CreatedExams")
   submissions Submission[]
   enrollments ExamEnrollment[]
@@ -39,6 +41,7 @@ model User {
   studentProblemStats StudentProblemStats[]
 
   @@index([email])
+  @@index([globalRoleId])
   @@map("user")
 }
 
@@ -322,8 +325,8 @@ model Submission {
   language   String
   sourceCode String
 
-  passedTestcases Int  @default(0)
-  totalTestcases  Int  @default(0)
+  passedTestcases Int    @default(0)
+  totalTestcases  Int    @default(0)
   executionTime   Float?
   memory          Float?
 
@@ -479,15 +482,66 @@ enum groupType {
 }
 
 model GroupMember {
-  id        String   @id @default(uuid())
-  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  groupId   String
-  student   User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  studentId String
-  addedAt   DateTime @default(now())
+  id String @id @default(uuid())
 
-  @@unique([groupId, studentId])
-  @@index([groupId, studentId])
+  groupId String
+  userId  String
+  roleId  String
+
+  addedAt DateTime @default(now())
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  role  Role? @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+  @@index([groupId, userId])
+  @@index([roleId])
+}
+
+// ===== RBAC System =====
+
+model Role {
+  id String @id @default(cuid())
+
+  name        String // "Teacher", "HOD", "TA", etc
+  description String?
+
+  scope RoleScope
+
+  permissions RolePermission[]
+  members     GroupMember[]
+
+  createdAt DateTime @default(now())
+  users     User[]
+
+  @@index([scope])
+}
+
+model Permission {
+  id          String  @id @default(cuid())
+  key         String  @unique // "CREATE_EXAM", "VIEW_ALL_GROUPS"
+  description String?
+
+  roles RolePermission[]
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+}
+
+enum RoleScope {
+  GROUP
+  DEPARTMENT
+  ORGANIZATION
+  PLATFORM
 }
 
 // ===== Tags System =====

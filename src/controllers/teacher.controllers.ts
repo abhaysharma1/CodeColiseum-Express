@@ -1,8 +1,42 @@
+import { PERMISSIONS } from "@/permissions/permission.constants";
+import { hasPermission } from "@/permissions/permission.service";
 import prisma from "@/utils/prisma";
 import { sendBatchToSQS } from "@/utils/sqs";
 import { NextFunction, Request, Response } from "express";
 import { Group } from "generated/prisma/client";
 import { z } from "zod";
+
+async function getExamGroupId(examId: string): Promise<string | undefined> {
+  const examGroup = await prisma.examGroup.findFirst({
+    where: { examId },
+    select: { groupId: true },
+  });
+
+  return examGroup?.groupId;
+}
+
+async function canAccessExamWithFallback(
+  userId: string,
+  examId: string,
+  creatorId: string,
+  permission: string,
+): Promise<boolean> {
+  const groupId = await getExamGroupId(examId);
+  const allowed = await hasPermission(userId, permission, groupId);
+  return allowed || creatorId === userId;
+}
+
+async function canAccessGroupWithFallback(
+  userId: string,
+  groupId: string,
+  creatorId: string,
+  permission: string,
+): Promise<boolean> {
+  const allowed = await hasPermission(userId, permission, groupId);
+  return allowed || creatorId === userId;
+}
+
+const DEFAULT_GROUP_MEMBER_ROLE_ID = "role_group_member";
 
 export const fetchAllExams = async (
   req: Request,
@@ -15,30 +49,34 @@ export const fetchAllExams = async (
     const skip = Number(req.query.skip) ?? 0;
     const searchValue = String(req.query.searchvalue) ?? "";
 
-    let exams;
+    const exams = await prisma.exam.findMany({
+      where: {
+        ...(searchValue
+          ? {
+              title: { contains: searchValue, mode: "insensitive" },
+            }
+          : {}),
+      },
+      orderBy: { endDate: "desc" },
+    });
 
-    if (searchValue == "") {
-      exams = await prisma.exam.findMany({
-        where: {
-          creatorId: user.id,
-        },
-        take: take,
-        skip: skip,
-        orderBy: { endDate: "desc" },
-      });
-    } else {
-      exams = await prisma.exam.findMany({
-        where: {
-          creatorId: user.id,
-          title: { contains: searchValue, mode: "insensitive" },
-        },
-        take: take,
-        skip: skip,
-        orderBy: { endDate: "desc" },
-      });
+    const authorizedExams: typeof exams = [];
+    for (const exam of exams) {
+      if (
+        await canAccessExamWithFallback(
+          user.id,
+          exam.id,
+          exam.creatorId,
+          PERMISSIONS.EXAM_EDIT,
+        )
+      ) {
+        authorizedExams.push(exam);
+      }
     }
 
-    return res.status(200).json(exams);
+    const paginatedExams = authorizedExams.slice(skip, skip + take);
+
+    return res.status(200).json(paginatedExams);
   } catch (error) {
     next(error);
   }
@@ -73,11 +111,23 @@ export const getExam = async (req: Request, res: Response) => {
   const exam = await prisma.exam.findUnique({
     where: {
       id: examId,
-      creatorId: user.id,
     },
   });
 
   if (!exam) {
+    return res.status(404).json({
+      error: "Exam Not Found or you don't have access to it",
+    });
+  }
+
+  if (
+    !(await canAccessExamWithFallback(
+      user.id,
+      exam.id,
+      exam.creatorId,
+      PERMISSIONS.EXAM_EDIT,
+    ))
+  ) {
     return res.status(404).json({
       error: "Exam Not Found or you don't have access to it",
     });
@@ -93,7 +143,27 @@ export const getExam = async (req: Request, res: Response) => {
 };
 
 export const getAllGroupExams = async (req: Request, res: Response) => {
+  const user = req.user;
   const examId = String(req.query.examId);
+
+  const exam = await prisma.exam.findUnique({
+    where: { id: examId },
+  });
+
+  if (!exam) {
+    return res.status(404).json({ error: "Exam not found" });
+  }
+
+  if (
+    !(await canAccessExamWithFallback(
+      user.id,
+      exam.id,
+      exam.creatorId,
+      PERMISSIONS.EXAM_EDIT,
+    ))
+  ) {
+    return res.status(403).json({ error: "Not authorized" });
+  }
 
   const groups = await prisma.group.findMany({
     where: {
@@ -109,7 +179,28 @@ export const getAllGroupExams = async (req: Request, res: Response) => {
 };
 
 export const getAllExamProblem = async (req: Request, res: Response) => {
+  const user = req.user;
   const examId = String(req.query.examId);
+
+  const exam = await prisma.exam.findUnique({
+    where: { id: examId },
+  });
+
+  if (!exam) {
+    return res.status(404).json({ error: "Exam not found" });
+  }
+
+  if (
+    !(await canAccessExamWithFallback(
+      user.id,
+      exam.id,
+      exam.creatorId,
+      PERMISSIONS.EXAM_EDIT,
+    ))
+  ) {
+    return res.status(403).json({ error: "Not authorized" });
+  }
+
   const problems = await prisma.examProblem.findMany({
     where: {
       examId: examId,
@@ -128,6 +219,7 @@ export const saveDraft = async (
   next: NextFunction,
 ) => {
   try {
+    const user = req.user;
     const { updatedExamDetails, selectedGroups, selectedProblemsId } = req.body;
 
     // Fetch the exam and validate access
@@ -137,6 +229,17 @@ export const saveDraft = async (
 
     if (!exam) {
       return res.status(404).json({ error: "Exam not found" });
+    }
+
+    if (
+      !(await canAccessExamWithFallback(
+        user.id,
+        exam.id,
+        exam.creatorId,
+        PERMISSIONS.EXAM_EDIT,
+      ))
+    ) {
+      return res.status(403).json({ error: "Not authorized" });
     }
 
     if (exam.isPublished) {
@@ -195,6 +298,7 @@ export const publishExam = async (
   next: NextFunction,
 ) => {
   try {
+    const user = req.user;
     const { updatedExamDetails, selectedGroups, selectedProblemsId } = req.body;
 
     // Fetch the exam and validate access
@@ -204,6 +308,17 @@ export const publishExam = async (
 
     if (!exam) {
       return res.status(404).json({ error: "Exam not found" });
+    }
+
+    if (
+      !(await canAccessExamWithFallback(
+        user.id,
+        exam.id,
+        exam.creatorId,
+        PERMISSIONS.EXAM_PUBLISH,
+      ))
+    ) {
+      return res.status(403).json({ error: "Not authorized" });
     }
 
     if (exam.isPublished) {
@@ -269,7 +384,8 @@ export const publishExam = async (
 export const getAllGroups = async (req: Request, res: Response) => {
   const user = req.user;
   const { take, skip, searchValue, groupType } = req.query;
-  let groups;
+  const takeNumber = Number(take) ?? 10;
+  const skipNumber = Number(skip) ?? 0;
 
   let where: any = {};
 
@@ -286,17 +402,30 @@ export const getAllGroups = async (req: Request, res: Response) => {
     ];
   }
 
-
-  groups = await prisma.group.findMany({
-    where: {
-      ...where,
-      creatorId: user.id,
+  const groups = await prisma.group.findMany({
+    where,
+    orderBy: {
+      createdAt: "desc",
     },
-    take: Number(take) ?? 10,
-    skip: Number(skip) ?? 0,
   });
 
-  return res.status(200).json(groups);
+  const authorizedGroups: typeof groups = [];
+  for (const group of groups) {
+    if (
+      await canAccessGroupWithFallback(
+        user.id,
+        group.id,
+        group.creatorId,
+        PERMISSIONS.GROUP_VIEW,
+      )
+    ) {
+      authorizedGroups.push(group);
+    }
+  }
+
+  const paginatedGroups = authorizedGroups.slice(skipNumber, skipNumber + takeNumber);
+
+  return res.status(200).json(paginatedGroups);
 };
 
 export const getExamResults = async (
@@ -346,7 +475,14 @@ export const getExamResults = async (
       return res.status(404).json({ error: "Exam not found" });
     }
 
-    if (examDetails.creatorId !== user.id) {
+    if (
+      !(await canAccessExamWithFallback(
+        user.id,
+        examDetails.id,
+        examDetails.creatorId,
+        PERMISSIONS.SUBMISSION_VIEW,
+      ))
+    ) {
       return res
         .status(403)
         .json({ error: "Not authorized to view this exam's results" });
@@ -561,7 +697,14 @@ export const getExamAIResults = async (
       return res.status(404).json({ error: "Exam Not Found" });
     }
 
-    if (exam.creatorId !== user.id) {
+    if (
+      !(await canAccessExamWithFallback(
+        user.id,
+        exam.id,
+        exam.creatorId,
+        PERMISSIONS.ANALYTICS_VIEW,
+      ))
+    ) {
       return res
         .status(403)
         .json({ error: "You Don't Have Access To This Exam" });
@@ -656,6 +799,14 @@ export const createGroup = async (
       },
     });
 
+    await prisma.groupMember.create({
+      data: {
+        groupId: newGroup.id,
+        userId: user.id,
+        roleId: "role_group_owner",
+      },
+    });
+
     // Filter out empty emails and trim whitespace
     const validEmails = emails
       .map((email: string) => email.trim())
@@ -699,23 +850,23 @@ export const createGroup = async (
     const existingMembers = await prisma.groupMember.findMany({
       where: {
         groupId: newGroup.id,
-        studentId: {
+        userId: {
           in: studentsToAdd.map((user) => user.id),
         },
       },
       include: {
-        student: true,
+        user: true,
       },
     });
 
     const existingMemberIds = new Set(
-      existingMembers.map((member) => member.studentId),
+      existingMembers.map((member) => member.userId),
     );
 
     existingMembers.forEach((member) => {
       alreadyMembers.push({
-        email: member.student.email,
-        name: member.student.name,
+        email: member.user.email,
+        name: member.user.name,
       });
     });
 
@@ -730,7 +881,8 @@ export const createGroup = async (
         prisma.groupMember.createMany({
           data: newStudents.map((user) => ({
             groupId: newGroup.id,
-            studentId: user.id,
+            userId: user.id,
+            roleId: DEFAULT_GROUP_MEMBER_ROLE_ID,
           })),
         }),
         prisma.group.update({
@@ -779,7 +931,14 @@ export const getGroupDetails = async (
       throw Error("Group Not Found");
     }
 
-    if (groupData?.creatorId != user.id) {
+    if (
+      !(await canAccessGroupWithFallback(
+        user.id,
+        groupData.id,
+        groupData.creatorId,
+        PERMISSIONS.GROUP_VIEW,
+      ))
+    ) {
       throw Error("Not Authorized");
     }
 
@@ -806,7 +965,14 @@ export const getGroupMembers = async (
       throw Error("Group Not Found");
     }
 
-    if (groupData?.creatorId != user.id) {
+    if (
+      !(await canAccessGroupWithFallback(
+        user.id,
+        groupData.id,
+        groupData.creatorId,
+        PERMISSIONS.GROUP_VIEW,
+      ))
+    ) {
       throw Error("Not Authorized");
     }
 
@@ -855,7 +1021,14 @@ export const addMemberToGroup = async (
       return res.status(404).json({ error: "Group Not Found" });
     }
 
-    if (groupData.creatorId !== user.id) {
+    if (
+      !(await canAccessGroupWithFallback(
+        user.id,
+        groupData.id,
+        groupData.creatorId,
+        PERMISSIONS.GROUP_EDIT,
+      ))
+    ) {
       return res.status(403).json({ error: "Not Authorized" });
     }
 
@@ -886,7 +1059,8 @@ export const addMemberToGroup = async (
     const result = await prisma.groupMember.createMany({
       data: studentIds.map((id) => ({
         groupId: groupData.id,
-        studentId: id,
+        userId: id,
+        roleId: DEFAULT_GROUP_MEMBER_ROLE_ID,
       })),
     });
 
@@ -927,7 +1101,14 @@ export const startAiEvaluation = async (
       return res.status(404).json({ error: "Exam not found" });
     }
 
-    if (exam.creatorId !== user.id) {
+    if (
+      !(await canAccessExamWithFallback(
+        user.id,
+        exam.id,
+        exam.creatorId,
+        PERMISSIONS.SUBMISSION_GRADE,
+      ))
+    ) {
       return res
         .status(403)
         .json({ error: "Not authorized to evaluate this exam" });
@@ -1007,7 +1188,14 @@ export const getAiEvaluationStatus = async (
       return res.status(404).json({ error: "Exam not found" });
     }
 
-    if (exam.creatorId !== user.id) {
+    if (
+      !(await canAccessExamWithFallback(
+        user.id,
+        exam.id,
+        exam.creatorId,
+        PERMISSIONS.ANALYTICS_VIEW,
+      ))
+    ) {
       return res
         .status(403)
         .json({ error: "Not authorized to view this exam's status" });

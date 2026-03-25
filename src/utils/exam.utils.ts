@@ -34,7 +34,7 @@ export async function canGiveExam(examDetails: Exam, req: Request) {
       group: {
         members: {
           some: {
-            studentId: session.user.id,
+            userId: session.user.id,
           },
         },
       },
