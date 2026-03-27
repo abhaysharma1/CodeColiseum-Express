@@ -16,17 +16,27 @@ export const getProblems = async (
   next: NextFunction,
 ) => {
   try {
-    const { searchValue, tags, difficulty, take, skip } = req.query;
+    const { searchValue, tags, difficulty, take, skip, withDescription } =
+      req.query;
 
     const where: any = {};
 
     // Add search conditions
     if (searchValue && String(searchValue).trim() !== "") {
-      where.OR = [
-        { title: { contains: String(searchValue), mode: "insensitive" } },
-        { description: { contains: String(searchValue), mode: "insensitive" } },
-        { id: String(searchValue) },
-      ];
+      if (withDescription) {
+        where.OR = [
+          { title: { contains: String(searchValue), mode: "insensitive" } },
+          {
+            description: { contains: String(searchValue), mode: "insensitive" },
+          },
+          { id: String(searchValue) },
+        ];
+      } else if (!withDescription || withDescription !== undefined) {
+        where.OR = [
+          { title: { contains: String(searchValue), mode: "insensitive" } },
+          { id: String(searchValue) },
+        ];
+      }
     }
 
     // Add tag filter

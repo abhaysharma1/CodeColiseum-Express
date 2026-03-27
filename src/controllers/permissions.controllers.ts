@@ -1,4 +1,4 @@
-import { hasPermission } from "@/permissions/permission.service";
+import { hasPermission, getUserPermissionSnapshot } from "@/permissions/permission.service";
 import { NextFunction, Request, Response } from "express";
 
 export const checkPermission = async (
@@ -24,6 +24,26 @@ export const checkPermission = async (
     const allowed = await hasPermission(user.id, permission, groupId);
 
     return res.status(200).json({ allowed });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getMyPermissions = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const user = req.user;
+
+    if (!user?.id) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const snapshot = await getUserPermissionSnapshot(user.id);
+
+    return res.status(200).json(snapshot);
   } catch (error) {
     next(error);
   }

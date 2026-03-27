@@ -2,6 +2,11 @@ import "dotenv/config";
 import { NextFunction, Request, Response } from "express";
 import prisma from "../utils/prisma";
 import { ExamStatus, ExamAttemptStatus } from "../../generated/prisma/enums";
+import {
+  recalculateStudentStats,
+  recalculateGroupStats,
+  calculateExamAnalytics,
+} from "../services/analytics.service";
 
 export async function finalizeExams(
   req: Request,
@@ -178,6 +183,11 @@ export async function finalizeExams(
           },
         });
 
+        // Recalculate group-level derived analytics - non-blocking
+        recalculateGroupStats(groupId).catch((err) =>
+          console.error("Failed to recalculate group analytics:", err),
+        );
+
         // 6. Update StudentOverallStats for each student in this group
         const groupMembers = await prisma.groupMember.findMany({
           where: { groupId },
@@ -222,8 +232,18 @@ export async function finalizeExams(
               avgScore: studentAvgScore,
             },
           });
+
+          // Recalculate derived analytics (weak topics, trends, etc.) - non-blocking
+          recalculateStudentStats(member.userId, groupId).catch((err) =>
+            console.error("Failed to recalculate student analytics:", err),
+          );
         }
       }
+
+      // Calculate exam-level analytics - non-blocking
+      calculateExamAnalytics(exam.id).catch((err) =>
+        console.error("Failed to calculate exam analytics:", err),
+      );
 
       finalizedExamIds.push(exam.id);
     }

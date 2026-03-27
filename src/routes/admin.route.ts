@@ -13,6 +13,13 @@ import {
   assignUserRoleByEmail,
   resetUserPasswordByEmail,
 } from "@/controllers/admin.controllers";
+import {
+  getOrgAnalyticsOverview,
+  getOrgAnalyticsGroups,
+  getOrgAnalyticsStudents,
+  getOrgAnalyticsExams,
+  getOrgAnalyticsProblems,
+} from "@/controllers/admin.analytics.controllers";
 
 const router = Router();
 
@@ -40,5 +47,12 @@ router.post("/bulkSignup", bulkSignUp);
 router.post("/single-signup", adminSingleSignUp);
 router.patch("/assign-role", assignUserRoleByEmail);
 router.post("/reset-password-by-email", resetUserPasswordByEmail);
+
+// Analytics Routes
+router.get("/analytics/overview", getOrgAnalyticsOverview);
+router.get("/analytics/groups", getOrgAnalyticsGroups);
+router.get("/analytics/students", getOrgAnalyticsStudents);
+router.get("/analytics/exams", getOrgAnalyticsExams);
+router.get("/analytics/problems", getOrgAnalyticsProblems);
 
 export default router;

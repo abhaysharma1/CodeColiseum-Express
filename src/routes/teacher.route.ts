@@ -1,8 +1,8 @@
 import { Router } from "express";
 import teacherExamRouter from "@/routes/exam.teacher.route";
 import { isTeacher } from "@/middleware/isTeacher.middleware";
-import { addMemberToGroup, createGroup, getAllGroups, getGroupDetails, getGroupMembers } from "@/controllers/teacher.controllers";
-import { getGroupOverallStats, getGroupProblemStats, getStudentOverallStats, getStudentProblemStats } from "@/controllers/teacher.stats.controllers";
+import { addCoTeacherToGroup, addMemberToGroup, createGroup, getAllGroups, getGroupDetails, getGroupMembers, removeMemberFromGroup, updateGroupDetails } from "@/controllers/teacher.controllers";
+import { getGroupOverallStats, getGroupProblemStats, getStudentOverallStats, getStudentProblemStats, getAnalyticsStudents, getStudentDetailedAnalytics, getAnalyticsOverview, getAnalyticsCharts } from "@/controllers/teacher.stats.controllers";
 import { requirePermission } from "@/middleware/permission.middleware";
 import { PERMISSIONS } from "@/permissions/permission.constants";
 
@@ -40,6 +40,24 @@ router.post(
 	addMemberToGroup
 );
 
+router.post(
+	"/addcoteachertogroup",
+	requirePermission(PERMISSIONS.GROUP_EDIT, getGroupIdFromBody),
+	addCoTeacherToGroup
+);
+
+router.post(
+	"/removememberfromgroup",
+	requirePermission(PERMISSIONS.GROUP_EDIT, getGroupIdFromBody),
+	removeMemberFromGroup
+);
+
+router.post(
+	"/updategroupdetails",
+	requirePermission(PERMISSIONS.GROUP_EDIT, getGroupIdFromBody),
+	updateGroupDetails
+);
+
 router.get(
 	"/group-overall-stats",
 	requirePermission(PERMISSIONS.ANALYTICS_VIEW, getGroupIdFromQuery),
@@ -59,6 +77,28 @@ router.get(
 	"/student-problem-stats",
 	requirePermission(PERMISSIONS.ANALYTICS_VIEW, getGroupIdFromQuery),
 	getStudentProblemStats
+);
+
+// Enhanced analytics endpoints
+router.get(
+	"/analytics/students",
+	requirePermission(PERMISSIONS.ANALYTICS_VIEW, getGroupIdFromQuery),
+	getAnalyticsStudents
+);
+router.get(
+	"/analytics/overview",
+	requirePermission(PERMISSIONS.ANALYTICS_VIEW, getGroupIdFromQuery),
+	getAnalyticsOverview
+);
+router.get(
+	"/analytics/charts",
+	requirePermission(PERMISSIONS.ANALYTICS_VIEW, getGroupIdFromQuery),
+	getAnalyticsCharts
+);
+router.get(
+	"/analytics/students/:studentId/details",
+	requirePermission(PERMISSIONS.ANALYTICS_VIEW, getGroupIdFromQuery),
+	getStudentDetailedAnalytics
 );
 
 export default router;

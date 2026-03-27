@@ -9,7 +9,8 @@ export type GlobalRoleId =
 
 export const GROUP_ROLE_IDS = {
   OWNER: "role_group_owner",
-  MEMBER: "role_group_member"
+  MEMBER: "role_group_member",
+  COTEACHER: "role_group_coteacher"
 } as const;
 
 export type GroupRoleId = (typeof GROUP_ROLE_IDS)[keyof typeof GROUP_ROLE_IDS];

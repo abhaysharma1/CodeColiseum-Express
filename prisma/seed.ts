@@ -16,7 +16,8 @@ const ROLE_IDS = {
   ORG_TEACHER: "role_org_teacher",
   ORG_STUDENT: "role_org_student",
   GROUP_OWNER: "role_group_owner",
-  GROUP_MEMBER: "role_group_member"
+  GROUP_MEMBER: "role_group_member",
+  GROUP_COTEACHER: "role_group_coteacher"
 } as const;
 
 function isTransientPrismaError(error: unknown): boolean {
@@ -144,6 +145,23 @@ async function seedRoles(permissionIdByKey: Map<string, string>) {
     }
   });
 
+  await prisma.role.upsert({
+    where: { id: ROLE_IDS.GROUP_COTEACHER },
+    update: {
+      name: "Group Co-Teacher",
+      description:
+        "Co-teacher for a group with teaching and analytics permissions, but limited management capabilities",
+      scope: "GROUP"
+    },
+    create: {
+      id: ROLE_IDS.GROUP_COTEACHER,
+      name: "Group Co-Teacher",
+      description:
+        "Co-teacher for a group with teaching and analytics permissions, but limited management capabilities",
+      scope: "GROUP"
+    }
+  });
+
   const allPermissionIds = Object.values(PERMISSIONS)
     .map((key) => permissionIdByKey.get(key))
     .filter((value): value is string => Boolean(value));
@@ -177,6 +195,10 @@ async function seedRoles(permissionIdByKey: Map<string, string>) {
     })),
     ...teacherPermissionIds.map((permissionId) => ({
       roleId: ROLE_IDS.GROUP_OWNER,
+      permissionId
+    })),
+    ...teacherPermissionIds.map((permissionId) => ({
+      roleId: ROLE_IDS.GROUP_COTEACHER,
       permissionId
     })),
     ...studentPermissionIds.map((permissionId) => ({

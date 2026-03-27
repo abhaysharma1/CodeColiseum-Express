@@ -8,6 +8,11 @@ import {
   sanitizeSourceCode,
 } from "../utils/exam.utils";
 import { SubmissionStatus } from "../../generated/prisma/enums";
+import {
+  updateStudentActivity,
+  updateStudentProblemSubmissionTime,
+  updateGroupProblemAverageTime,
+} from "./analytics.service";
 
 // Base64 utility functions
 const encodeBase64 = (value?: string | null): string | null =>
@@ -568,6 +573,23 @@ export async function submitCodeService(
         totalAttempts: { increment: 1 },
       },
     });
+
+    // 4. Update analytics (real-time tracking)
+    // Non-blocking async calls - don't await to avoid slowing down submission response
+    updateStudentActivity(session.user.id, group.id, problemId).catch((err) =>
+      console.error("Failed to update student activity:", err),
+    );
+
+    updateStudentProblemSubmissionTime(
+      session.user.id,
+      group.id,
+      problemId,
+      totalTimeTaken,
+    ).catch((err) => console.error("Failed to update submission time stats:", err));
+
+    updateGroupProblemAverageTime(group.id, problemId, totalTimeTaken).catch(
+      (err) => console.error("Failed to update group problem time stats:", err),
+    );
   }
 
 

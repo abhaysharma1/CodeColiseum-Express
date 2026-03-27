@@ -155,6 +155,71 @@ async function hasGroupPermission(
 	return hasRolePermission(permissionKeys, member.role.permissions);
 }
 
+export type UserPermissionSnapshot = {
+	userId: string;
+	globalRoleId: string | null;
+	globalPermissions: string[];
+	groupPermissions: Record<string, string[]>;
+};
+
+export async function getUserPermissionSnapshot(userId: string): Promise<UserPermissionSnapshot> {
+	const user = await prisma.user.findUnique({
+		where: { id: userId },
+		select: {
+			globalRoleId: true,
+			globalRole: {
+				select: {
+					permissions: {
+						include: {
+							permission: {
+								select: { key: true }
+							}
+						}
+					}
+				}
+			}
+		}
+	});
+
+	const globalPermissions =
+		user?.globalRole?.permissions?.map((rp) => rp.permission.key.toLowerCase()) ?? [];
+
+	const membershipRoles = await prisma.groupMember.findMany({
+		where: { userId },
+		select: {
+			groupId: true,
+			role: {
+				select: {
+					scope: true,
+					permissions: {
+						include: {
+							permission: {
+								select: { key: true }
+							}
+						}
+					}
+				}
+			}
+		}
+	});
+
+	const groupPermissions: Record<string, string[]> = {};
+
+	for (const member of membershipRoles) {
+		if (!member.role || member.role.scope !== "GROUP") continue;
+
+		const keys = member.role.permissions.map((rp) => rp.permission.key.toLowerCase());
+		groupPermissions[member.groupId] = Array.from(new Set(keys));
+	}
+
+	return {
+		userId,
+		globalRoleId: user?.globalRoleId ?? null,
+		globalPermissions: Array.from(new Set(globalPermissions)),
+		groupPermissions
+	};
+}
+
 export async function hasPermission(
 	userId: string,
 	permission: string,

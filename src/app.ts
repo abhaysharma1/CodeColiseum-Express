@@ -12,6 +12,7 @@ import adminRouter from "@/routes/admin.route";
 import internalRouter from "@/routes/internal.routes"
 import permissionsRouter from "@/routes/permissions.route";
 import publicAuthRouter from "@/routes/public.auth.route";
+import notificationsRouter from "@/routes/notifications.route";
 
 const app: Application = express();
 
@@ -53,6 +54,9 @@ app.use("/internal",internalRouter)
 app.use("/permissions", permissionsRouter);
 
 app.use("/public-auth", publicAuthRouter);
+
+// Notifications API
+app.use("/api/notifications", notificationsRouter);
 
 app.use((req: Request, res: Response) => {
   res.status(404).json({ message: "Resource not found" });

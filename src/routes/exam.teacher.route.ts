@@ -1,5 +1,8 @@
 import {
+  archiveBulkExams,
+  deleteBulkExams,
   draftExam,
+  exportExamsCSV,
   fetchAllExams,
   getAiEvaluationStatus,
   getAllExamProblem,
@@ -8,10 +11,17 @@ import {
   getExam,
   getExamAIResults,
   getExamResults,
+  publishBulkExams,
   publishExam,
   saveDraft,
   startAiEvaluation,
 } from "@/controllers/teacher.controllers";
+import {
+  getChartData,
+  getDashboardSummary,
+  getRecentActivity,
+  getTopStudents,
+} from "@/controllers/admin.analytics.controllers";
 import { requirePermission } from "@/middleware/permission.middleware";
 import { PERMISSIONS } from "@/permissions/permission.constants";
 import { Router } from "express";
@@ -43,5 +53,23 @@ router.get("/getairesult", requirePermission(PERMISSIONS.ANALYTICS_VIEW), getExa
 router.post("/start-ai-evaluation", requirePermission(PERMISSIONS.SUBMISSION_GRADE), startAiEvaluation);
 
 router.get("/get-ai-evaluation-status", requirePermission(PERMISSIONS.ANALYTICS_VIEW), getAiEvaluationStatus);
+
+// Dashboard Statistics Routes
+router.get("/stats/summary", requirePermission(PERMISSIONS.ANALYTICS_VIEW), getDashboardSummary);
+
+router.get("/stats/chart-data", requirePermission(PERMISSIONS.ANALYTICS_VIEW), getChartData);
+
+router.get("/recent-activity", requirePermission(PERMISSIONS.ANALYTICS_VIEW), getRecentActivity);
+
+router.get("/top-students", requirePermission(PERMISSIONS.ANALYTICS_VIEW), getTopStudents);
+
+// Bulk Action Routes
+router.post("/publish-bulk", requirePermission(PERMISSIONS.EXAM_PUBLISH), publishBulkExams);
+
+router.post("/delete-bulk", requirePermission(PERMISSIONS.EXAM_EDIT), deleteBulkExams);
+
+router.post("/archive-bulk", requirePermission(PERMISSIONS.EXAM_EDIT), archiveBulkExams);
+
+router.post("/export-csv", requirePermission(PERMISSIONS.EXAM_EDIT), exportExamsCSV);
 
 export default router;

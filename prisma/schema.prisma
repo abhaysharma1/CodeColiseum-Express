@@ -10,14 +10,14 @@ datasource db {
 
 // ===== User & Authentication =====
 model User {
-  id            String    @id @default(uuid())
+  id            String   @id @default(uuid())
   name          String
-  email         String    @unique
-  isOnboarded   Boolean   @default(false)
-  emailVerified Boolean   @default(false)
+  email         String   @unique
+  isOnboarded   Boolean  @default(false)
+  emailVerified Boolean  @default(false)
   image         String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
   globalRoleId  String?
 
   // Relations
@@ -30,14 +30,16 @@ model User {
   accounts    Account[]
 
   // Relation for Groups
-  createdGroups       Group[]               @relation("TeacherGroups")
-  memberGroups        GroupMember[]
-  selfSubmissions     selfSubmission[]
-  examAttempts        ExamAttempt[]
-  aiconversations     AIConversation[]
-  airateLimits        AIRateLimit[]
-  studentOverallStats StudentOverallStats?
-  studentProblemStats StudentProblemStats[]
+  createdGroups          Group[]                 @relation("TeacherGroups")
+  memberGroups           GroupMember[]
+  selfSubmissions        selfSubmission[]
+  examAttempts           ExamAttempt[]
+  aiconversations        AIConversation[]
+  airateLimits           AIRateLimit[]
+  studentOverallStats    StudentOverallStats?
+  studentProblemStats    StudentProblemStats[]
+  notifications          Notification[]
+  notificationRecipients NotificationRecipient[]
 
   @@index([email])
   @@index([globalRoleId])
@@ -275,6 +277,7 @@ model Exam {
   examAttempts    ExamAttempt[]
   aiEvaluations   AiEvaluation[]
   aiconversations AIConversation[]
+  examAnalytics   ExamAnalytics?
 
   @@index([id, creatorId])
 }
@@ -623,20 +626,33 @@ model GroupOverallStats {
   id      String @id @default(uuid())
   groupId String @unique
 
-  totalExams    Int
-  totalStudents Int
+  totalExams     Int
+  totalStudents  Int
+  activeStudents Int @default(0) // Students with activity in last 7 days
 
   avgScoreAllExams Float
   overallPassRate  Float
+  completionRate   Float @default(0) // Percentage of students who've completed >= 1 exam
 
   highestExamAvg Float
   lowestExamAvg  Float
 
+  // Problem performance
+  weakestProblemId String?
+  hardestProblemId String?
+
+  // Time tracking
+  avgTimePerStudent Float @default(0) // minutes
+  totalTimeSpent    Float @default(0) // minutes
+
+  createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
 
   @@index([groupId])
+  @@index([createdAt])
+  @@index([avgScoreAllExams, groupId]) // For sorting by performance
 }
 
 model StudentOverallStats {
@@ -644,12 +660,30 @@ model StudentOverallStats {
   groupId   String
   studentId String @unique
 
-  totalScore Float
-  totalExams Int
-  avgScore   Float
+  totalScore           Float
+  totalExams           Int
+  avgScore             Float
+  completionPercentage Float @default(0) // 0-100
 
-  totalAttempts Int
+  totalAttempts         Int
+  avgAttemptsPerProblem Float @default(1)
 
+  // Topic tracking
+  weakTopics   Json @default(dbgenerated("'[]'::jsonb")) // Array of topic strings
+  strongTopics Json @default(dbgenerated("'[]'::jsonb")) // Array of topic strings
+
+  // Activity tracking
+  lastActive DateTime? @default(now())
+
+  // Trend indicators
+  scoreTrend      String @default("stable") // "improving", "declining", "stable"
+  scoreTrendValue Float  @default(0) // percentage change in last 5 attempts
+
+  // Time tracking
+  avgTimePerProblem Float @default(0) // minutes
+  totalTimeSpent    Float @default(0) // minutes
+
+  createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   group   Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
@@ -658,6 +692,8 @@ model StudentOverallStats {
   @@unique([groupId, studentId])
   @@index([groupId])
   @@index([studentId])
+  @@index([avgScore, groupId]) // For sorting by score
+  @@index([lastActive, groupId]) // For recent activity
 }
 
 model GroupProblemStats {
@@ -670,9 +706,16 @@ model GroupProblemStats {
   acceptedCount  Int
   totalAttempts  Int
 
-  avgRuntime Float
-  avgMemory  Float
+  successRate Float @default(0) // Percentage (0-100)
+  avgRuntime  Float
+  avgMemory   Float
+  avgTime     Float @default(0) // Time to solve in minutes
 
+  // Difficulty detection
+  difficultyTier String @default("medium") // "easy", "medium", "hard" - Detected from stats, not predefined
+  failureRate    Float  @default(0) // Students who failed this problem
+
+  createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   group   Group   @relation(fields: [groupId], references: [id], onDelete: Cascade)
@@ -682,6 +725,7 @@ model GroupProblemStats {
   @@index([groupId, problemId])
   @@index([problemId])
   @@index([groupId])
+  @@index([successRate, groupId]) // For filtering by difficulty
 }
 
 model StudentProblemStats {
@@ -693,10 +737,173 @@ model StudentProblemStats {
   attempts Int
   solved   Boolean
 
+  // Weakness tracking
+  isWeak      Boolean @default(false) // Marked as weak topic if <50% pass rate or failed recently
+  successRate Float   @default(0) // Percentage (0-100) - what % of this student's attempts passed
+
+  // Time tracking
+  avgTime   Float @default(0) // Average time to solve in minutes
+  totalTime Float @default(0) // Total time spent on this problem
+
+  // Activity tracking
+  lastAttemptAt  DateTime?
+  firstAttemptAt DateTime  @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   group   Group   @relation(fields: [groupId], references: [id], onDelete: Cascade)
   student User    @relation(fields: [studentId], references: [id], onDelete: Cascade)
   problem Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
 
   @@unique([studentId, problemId, groupId])
   @@index([studentId, problemId])
+  @@index([studentId, isWeak]) // For filtering weak topics
+}
+
+// ===== Organization-Level Analytics =====
+
+model OrganizationAnalytics {
+  id String @id @default(uuid())
+
+  // Scope (organization level)
+  // Note: This assumes you have an Organization model or use a root group/department
+  // For now, we'll use a departmentId or organizationId placeholder
+  organizationId String // Links to organization context (implementation-specific)
+
+  // Group-level aggregates
+  totalGroups  Int @default(0)
+  activeGroups Int @default(0) // Groups with activity in last 7 days
+
+  // Student aggregates
+  totalStudents  Int @default(0)
+  activeStudents Int @default(0)
+
+  // Performance aggregates
+  avgScore        Float @default(0)
+  overallPassRate Float @default(0)
+  completionRate  Float @default(0) // Percentage of students with >= 1 completed exam
+
+  // Problem data
+  totalProblems     Int  @default(0)
+  weakestProblemIds Json @default(dbgenerated("'[]'::jsonb")) // Array of top 5 most-failed problem IDs
+  hardestProblemIds Json @default(dbgenerated("'[]'::jsonb")) // Array of top 5 hardest problem IDs
+
+  // Time tracking
+  avgTimePerStudent Float @default(0)
+  totalTimeSpent    Float @default(0)
+
+  // Trend data
+  scoreDistribution Json @default(dbgenerated("'{}'::jsonb")) // { "0-20": 5, "20-40": 10, ... }
+  performanceTrend  Json @default(dbgenerated("'[]'::jsonb")) // [ { week: 1, avgScore: 75 }, ... ]
+
+  // Engagement metrics
+  participationRate        Float @default(0)
+  avgSubmissionsPerStudent Float @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId])
+  @@index([organizationId])
+  @@index([updatedAt])
+}
+
+// ===== Exam-Level Analytics =====
+
+model ExamAnalytics {
+  id String @id @default(uuid())
+
+  examId String @unique
+  exam   Exam   @relation(fields: [examId], references: [id], onDelete: Cascade)
+
+  // Participant stats
+  totalEnrolled  Int   @default(0)
+  totalAttempted Int   @default(0)
+  totalCompleted Int   @default(0)
+  completionRate Float @default(0)
+
+  // Score stats
+  avgScore     Float @default(0)
+  highestScore Float @default(0)
+  lowestScore  Float @default(0)
+  medianScore  Float @default(0)
+
+  // Distribution
+  scoreDistribution Json @default(dbgenerated("'{}'::jsonb")) // { "0-20": 5, "20-40": 10, ... }
+
+  // Problem-level
+  problemDifficulties Json @default(dbgenerated("'[]'::jsonb")) // Array of { problemId, avgScore, failureRate }
+
+  // Time stats
+  avgTimeToComplete Float @default(0) // minutes
+  avgAttempts       Float @default(1)
+
+  // Submission stats
+  totalSubmissions Int @default(0)
+  acceptedCount    Int @default(0)
+  partialCount     Int @default(0)
+  failedCount      Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([examId])
+  @@index([updatedAt])
+}
+
+// ===== Notification System =====
+
+model Notification {
+  id        String           @id @default(cuid())
+  title     String
+  message   String
+  type      NotificationType
+  createdAt DateTime         @default(now())
+
+  senderId String
+  sender   User   @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  groupId String?
+  examId  String?
+
+  priority NotificationPriority @default(NORMAL)
+
+  recipients NotificationRecipient[]
+
+  @@index([createdAt])
+  @@index([groupId])
+  @@index([examId])
+}
+
+enum NotificationType {
+  EXAM
+  ANNOUNCEMENT
+  SYSTEM
+  REMINDER
+}
+
+enum NotificationPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+model NotificationRecipient {
+  id String @id @default(cuid())
+
+  notificationId String
+  userId         String
+
+  isRead Boolean   @default(false)
+  readAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([notificationId, userId])
+  @@index([userId, isRead])
 }

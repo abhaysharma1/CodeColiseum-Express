@@ -4,7 +4,7 @@ import { hasPermission } from "@/permissions/permission.service";
 import prisma from "@/utils/prisma";
 import { sendBatchToSQS } from "@/utils/sqs";
 import { NextFunction, Request, Response } from "express";
-import { Group } from "generated/prisma/client";
+import { Group, NotificationPriority, NotificationType } from "generated/prisma/client";
 import { z } from "zod";
 
 async function getExamGroupId(examId: string): Promise<string | undefined> {
@@ -49,19 +49,54 @@ export const fetchAllExams = async (
     const take = Number(req.query.take) ?? 10;
     const skip = Number(req.query.skip) ?? 0;
     const searchValue = String(req.query.searchvalue) ?? "";
+    const statusFilter = req.query.status ? String(req.query.status) : null;
+    const dateFromStr = req.query.dateFrom ? String(req.query.dateFrom) : null;
+    const dateToStr = req.query.dateTo ? String(req.query.dateTo) : null;
+
+    // Build where clause
+    const whereClause: any = {};
+
+    // Search filter
+    if (searchValue) {
+      whereClause.OR = [
+        { title: { contains: searchValue, mode: "insensitive" } },
+        { description: { contains: searchValue, mode: "insensitive" } },
+      ];
+    }
+
+    // Status filter
+    if (statusFilter) {
+      if (statusFilter === "published") {
+        whereClause.isPublished = true;
+      } else if (statusFilter === "draft") {
+        whereClause.isPublished = false;
+      } else if (statusFilter === "active" || statusFilter === "archived") {
+        whereClause.status = statusFilter.toUpperCase();
+      }
+    }
+
+    // Date range filter
+    if (dateFromStr || dateToStr) {
+      whereClause.startDate = {};
+      if (dateFromStr) {
+        whereClause.startDate.gte = new Date(dateFromStr);
+      }
+      if (dateToStr) {
+        whereClause.startDate.lte = new Date(dateToStr);
+      }
+    }
 
     const exams = await prisma.exam.findMany({
-      where: {
-        ...(searchValue
-          ? {
-              title: { contains: searchValue, mode: "insensitive" },
-            }
-          : {}),
-      },
+      where: whereClause,
       orderBy: { endDate: "desc" },
+      include: {
+        _count: {
+          select: { enrollments: true },
+        },
+      },
     });
 
-    const authorizedExams: typeof exams = [];
+    const authorizedExams: (typeof exams)[0][] = [];
     for (const exam of exams) {
       if (
         await canAccessExamWithFallback(
@@ -77,7 +112,290 @@ export const fetchAllExams = async (
 
     const paginatedExams = authorizedExams.slice(skip, skip + take);
 
-    return res.status(200).json(paginatedExams);
+    // Enhance with additional metrics
+    const enricedExams = await Promise.all(
+      paginatedExams.map(async (exam) => {
+        // Get exam attempts for this exam
+        const attempts = await prisma.examAttempt.findMany({
+          where: {
+            examId: exam.id,
+          },
+          select: { totalScore: true, status: true },
+        });
+
+        // Calculate passing percentage (attempts with totalScore >= 60%)
+        const passingCount = attempts.filter(
+          (a) => a.totalScore >= 60
+        ).length;
+        const passingPercentage =
+          attempts.length > 0 ? (passingCount / attempts.length) * 100 : 0;
+
+        // Get the last submission date
+        const lastAttempt = await prisma.examAttempt.findFirst({
+          where: { examId: exam.id },
+          select: { submittedAt: true },
+          orderBy: { submittedAt: "desc" },
+        });
+
+        return {
+          ...exam,
+          studentCount: exam._count.enrollments,
+          passingPercentage: Math.round(passingPercentage * 100) / 100,
+          lastSubmittedDate: lastAttempt?.submittedAt,
+        };
+      })
+    );
+
+    return res.status(200).json(enricedExams);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const publishBulkExams = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const user = req.user;
+    const { testIds } = req.body;
+
+    if (!Array.isArray(testIds) || testIds.length === 0) {
+      return res
+        .status(400)
+        .json({ error: "testIds must be a non-empty array" });
+    }
+
+    // Authorization check: ensure user has access to all exams
+    const exams = await prisma.exam.findMany({
+      where: { id: { in: testIds } },
+      select: { id: true, creatorId: true },
+    });
+
+    for (const exam of exams) {
+      const hasAccess = await canAccessExamWithFallback(
+        user.id,
+        exam.id,
+        exam.creatorId,
+        PERMISSIONS.EXAM_PUBLISH,
+      );
+      if (!hasAccess) {
+        return res
+          .status(403)
+          .json({ error: `Access denied for exam ${exam.id}` });
+      }
+    }
+
+    // Publish all authorized exams
+    await prisma.exam.updateMany({
+      where: { id: { in: testIds } },
+      data: { isPublished: true },
+    });
+
+    return res
+      .status(200)
+      .json({ message: `Successfully published ${testIds.length} exams` });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteBulkExams = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const user = req.user;
+    const { testIds } = req.body;
+
+    if (!Array.isArray(testIds) || testIds.length === 0) {
+      return res
+        .status(400)
+        .json({ error: "testIds must be a non-empty array" });
+    }
+
+    // Authorization check: ensure user has access to all exams
+    const exams = await prisma.exam.findMany({
+      where: { id: { in: testIds } },
+      select: { id: true, creatorId: true },
+    });
+
+    for (const exam of exams) {
+      const hasAccess = await canAccessExamWithFallback(
+        user.id,
+        exam.id,
+        exam.creatorId,
+        PERMISSIONS.EXAM_EDIT,
+      );
+      if (!hasAccess) {
+        return res
+          .status(403)
+          .json({ error: `Access denied for exam ${exam.id}` });
+      }
+    }
+
+    // Delete all authorized exams (cascade deletes via Prisma)
+    await prisma.exam.deleteMany({
+      where: { id: { in: testIds } },
+    });
+
+    return res
+      .status(200)
+      .json({ message: `Successfully deleted ${testIds.length} exams` });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const archiveBulkExams = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const user = req.user;
+    const { testIds } = req.body;
+
+    if (!Array.isArray(testIds) || testIds.length === 0) {
+      return res
+        .status(400)
+        .json({ error: "testIds must be a non-empty array" });
+    }
+
+    // Authorization check: ensure user has access to all exams
+    const exams = await prisma.exam.findMany({
+      where: { id: { in: testIds } },
+      select: { id: true, creatorId: true },
+    });
+
+    for (const exam of exams) {
+      const hasAccess = await canAccessExamWithFallback(
+        user.id,
+        exam.id,
+        exam.creatorId,
+        PERMISSIONS.EXAM_EDIT,
+      );
+      if (!hasAccess) {
+        return res
+          .status(403)
+          .json({ error: `Access denied for exam ${exam.id}` });
+      }
+    }
+
+    // Mark exams as finished (closest to archiving in the schema)
+    await prisma.exam.updateMany({
+      where: { id: { in: testIds } },
+      data: { status: "finished" },
+    });
+
+    return res
+      .status(200)
+      .json({ message: `Successfully archived ${testIds.length} exams` });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const exportExamsCSV = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const user = req.user;
+    const { testIds } = req.body;
+
+    if (!Array.isArray(testIds) || testIds.length === 0) {
+      return res
+        .status(400)
+        .json({ error: "testIds must be a non-empty array" });
+    }
+
+    // Authorization check: ensure user has access to all exams
+    const exams = await prisma.exam.findMany({
+      where: { id: { in: testIds } },
+      select: { id: true, creatorId: true },
+    });
+
+    for (const exam of exams) {
+      const hasAccess = await canAccessExamWithFallback(
+        user.id,
+        exam.id,
+        exam.creatorId,
+        PERMISSIONS.EXAM_EDIT,
+      );
+      if (!hasAccess) {
+        return res
+          .status(403)
+          .json({ error: `Access denied for exam ${exam.id}` });
+      }
+    }
+
+    // Fetch detailed exam data for export
+    const examData = await prisma.exam.findMany({
+      where: { id: { in: testIds } },
+      select: {
+        id: true,
+        title: true,
+        isPublished: true,
+        status: true,
+        createdAt: true,
+        startDate: true,
+        endDate: true,
+        _count: { select: { enrollments: true } },
+      },
+    });
+
+    // Build CSV data
+    const csvRows: string[] = [
+      "ID,Title,Status,Student Count,Passing %,Created Date,Start Date,End Date",
+    ];
+
+    for (const exam of examData) {
+      // Calculate passing percentage using ExamAttempts
+      const attempts = await prisma.examAttempt.findMany({
+        where: { examId: exam.id },
+        select: { totalScore: true },
+      });
+
+      const passingCount = attempts.filter((a) => a.totalScore >= 60).length;
+      const passingPercentage =
+        attempts.length > 0
+          ? ((passingCount / attempts.length) * 100).toFixed(2)
+          : "0.00";
+
+      const status = exam.isPublished
+        ? "Published"
+        : exam.status === "finished"
+          ? "Finished"
+          : "Draft";
+
+      const row = [
+        exam.id,
+        `"${exam.title.replace(/"/g, '""')}"`,
+        status,
+        exam._count.enrollments,
+        passingPercentage,
+        exam.createdAt.toISOString().split("T")[0],
+        exam.startDate?.toISOString().split("T")[0] ?? "",
+        exam.endDate?.toISOString().split("T")[0] ?? "",
+      ];
+
+      csvRows.push(row.join(","));
+    }
+
+    const csvContent = csvRows.join("\n");
+
+    // Set response headers for CSV download
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="exams_${Date.now()}.csv"`,
+    );
+
+    return res.status(200).send(csvContent);
   } catch (error) {
     next(error);
   }
@@ -375,6 +693,56 @@ export const publishExam = async (
         })),
       });
     });
+    // Notify students in associated groups
+    try {
+      const groupIds = Array.isArray(selectedGroups)
+        ? selectedGroups.map((g: Group) => g.id)
+        : [];
+
+      if (groupIds.length > 0) {
+        const members = await prisma.groupMember.findMany({
+          where: {
+            groupId: { in: groupIds },
+          },
+          include: {
+            user: {
+              select: { id: true, globalRoleId: true },
+            },
+          },
+        });
+
+        const recipientIds = Array.from(
+          new Set(
+            members
+              .filter((m) => m.user.globalRoleId === GLOBAL_ROLE_IDS.ORG_STUDENT)
+              .map((m) => m.user.id),
+          ),
+        );
+
+        if (recipientIds.length > 0) {
+          await prisma.notification.create({
+            data: {
+              title: `New exam published: ${updatedExamDetails.title}`,
+              message: `An exam has been published for your group(s).`,
+              type: NotificationType.EXAM,
+              priority: NotificationPriority.NORMAL,
+              senderId: user.id,
+              examId: exam.id,
+              recipients: {
+                createMany: {
+                  data: recipientIds.map((id) => ({
+                    userId: id,
+                  })),
+                  skipDuplicates: true,
+                },
+              },
+            },
+          });
+        }
+      }
+    } catch (notifyError) {
+      console.error("Failed to create exam publish notifications", notifyError);
+    }
 
     return res.status(200).json({ message: "Exam published successfully" });
   } catch (error) {
@@ -385,8 +753,8 @@ export const publishExam = async (
 export const getAllGroups = async (req: Request, res: Response) => {
   const user = req.user;
   const { take, skip, searchValue, groupType } = req.query;
-  const takeNumber = Number(take) ?? 10;
-  const skipNumber = Number(skip) ?? 0;
+  const takeNumber = take !== undefined ? Number(take) : 10;
+  const skipNumber = skip !== undefined ? Number(skip) : 0;
 
   let where: any = {};
 
@@ -901,6 +1269,27 @@ export const createGroup = async (
           name: user.name,
         })),
       );
+      // Notify newly added students about the group
+      try {
+        await prisma.notification.create({
+          data: {
+            title: `Added to group: ${newGroup.name}`,
+            message: `You have been added to the group ${newGroup.name}.`,
+            type: NotificationType.ANNOUNCEMENT,
+            priority: NotificationPriority.NORMAL,
+            senderId: user.id,
+            groupId: newGroup.id,
+            recipients: {
+              createMany: {
+                data: newStudents.map((s) => ({ userId: s.id })),
+                skipDuplicates: true,
+              },
+            },
+          },
+        });
+      } catch (notifyError) {
+        console.error("Failed to create group member notifications", notifyError);
+      }
     }
 
     return res.status(200).json({
@@ -977,18 +1366,367 @@ export const getGroupMembers = async (
       throw Error("Not Authorized");
     }
 
-    const groupMembers = await prisma.user.findMany({
-      where: {
-        memberGroups: {
-          some: {
-            groupId: groupId,
+    // Optional pagination + search
+    const rawPage = req.query.page ? Number(req.query.page) : undefined;
+    const rawLimit = req.query.limit ? Number(req.query.limit) : undefined;
+    const search = String(req.query.search || "").trim();
+
+    const hasPaginationParams =
+      (rawPage !== undefined && !Number.isNaN(rawPage)) ||
+      (rawLimit !== undefined && !Number.isNaN(rawLimit)) ||
+      search.length > 0;
+
+    // Backwards compatible behaviour: if no pagination/search params are
+    // provided, return the full list (existing API contract).
+    if (!hasPaginationParams) {
+      const members = await prisma.user.findMany({
+        where: {
+          memberGroups: {
+            some: {
+              groupId,
+            },
           },
         },
+      });
+
+      return res.status(200).json(members);
+    }
+
+    const page = Math.max(1, rawPage && !Number.isNaN(rawPage) ? rawPage : 1);
+    const limit = Math.min(
+      100,
+      rawLimit && !Number.isNaN(rawLimit) ? rawLimit : 20,
+    );
+    const skip = (page - 1) * limit;
+
+    const where: any = {
+      memberGroups: {
+        some: {
+          groupId,
+        },
       },
-      
+    };
+
+    if (search) {
+      where.AND = [
+        {
+          OR: [
+            {
+              name: {
+                contains: search,
+                mode: "insensitive",
+              },
+            },
+            {
+              email: {
+                contains: search,
+                mode: "insensitive",
+              },
+            },
+          ],
+        },
+      ];
+    }
+
+    const total = await prisma.user.count({ where });
+
+    const members = await prisma.user.findMany({
+      where,
+      skip,
+      take: limit,
+      orderBy: { createdAt: "desc" },
     });
 
-    return res.status(200).json(groupMembers);
+    return res.status(200).json({
+      data: members,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.max(1, Math.ceil(total / limit)),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const removeMemberFromGroup = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { groupId, userId } = req.body as {
+      groupId?: string;
+      userId?: string;
+    };
+
+    if (!groupId || !userId) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    const user = req.user;
+
+    if (!user) {
+      return res.status(403).json({ error: "Not Authorized" });
+    }
+
+    const groupData = await prisma.group.findUnique({
+      where: { id: groupId },
+    });
+
+    if (!groupData) {
+      return res.status(404).json({ error: "Group Not Found" });
+    }
+
+    if (
+      !(await canAccessGroupWithFallback(
+        user.id,
+        groupData.id,
+        groupData.creatorId,
+        PERMISSIONS.GROUP_EDIT,
+      ))
+    ) {
+      return res.status(403).json({ error: "Not Authorized" });
+    }
+
+    const callerMembership = await prisma.groupMember.findUnique({
+      where: {
+        groupId_userId: {
+          groupId,
+          userId: user.id,
+        },
+      },
+      select: {
+        roleId: true,
+      },
+    });
+
+    const isGroupOwner =
+      callerMembership?.roleId === GROUP_ROLE_IDS.OWNER ||
+      groupData.creatorId === user.id;
+
+    if (!isGroupOwner) {
+      return res.status(403).json({
+        error: "Only the group owner can remove members from the group",
+      });
+    }
+
+    const existingMembership = await prisma.groupMember.findUnique({
+      where: {
+        groupId_userId: {
+          groupId,
+          userId,
+        },
+      },
+    });
+
+    if (!existingMembership) {
+      return res
+        .status(404)
+        .json({ error: "Student is not a member of this group" });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.groupMember.delete({
+        where: {
+          groupId_userId: {
+            groupId,
+            userId,
+          },
+        },
+      });
+
+      await tx.group.update({
+        where: { id: groupId },
+        data: {
+          noOfMembers: { decrement: 1 },
+        },
+      });
+    });
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateGroupDetails = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  const inputSchema = z.object({
+    groupId: z.string().min(1),
+    name: z.string().min(1),
+    description: z.string().optional(),
+    type: z.enum(["CLASS", "LAB"]),
+    aiEnabled: z.boolean(),
+    aiMaxMessages: z.number().min(1).max(50).optional(),
+    aiMaxTokens: z.number().min(50).max(10000).optional(),
+  });
+
+  try {
+    const user = req.user;
+
+    if (!user) {
+      return res.status(403).json({ error: "Not Authorized" });
+    }
+
+    const parsed = inputSchema.safeParse(req.body);
+
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Validation Failed" });
+    }
+
+    const {
+      groupId,
+      name,
+      description,
+      type,
+      aiEnabled,
+      aiMaxMessages,
+      aiMaxTokens,
+    } = parsed.data;
+
+    const groupData = await prisma.group.findUnique({
+      where: { id: groupId },
+    });
+
+    if (!groupData) {
+      return res.status(404).json({ error: "Group Not Found" });
+    }
+
+    const canEdit = await canAccessGroupWithFallback(
+      user.id,
+      groupData.id,
+      groupData.creatorId,
+      PERMISSIONS.GROUP_EDIT,
+    );
+
+    if (!canEdit) {
+      return res.status(403).json({ error: "Not Authorized" });
+    }
+
+    const callerMembership = await prisma.groupMember.findUnique({
+      where: {
+        groupId_userId: {
+          groupId,
+          userId: user.id,
+        },
+      },
+      select: {
+        roleId: true,
+      },
+    });
+
+    if (callerMembership?.roleId === GROUP_ROLE_IDS.COTEACHER) {
+      return res.status(403).json({
+        error: "Co-teachers are not allowed to change group properties",
+      });
+    }
+
+    const updatedGroup = await prisma.group.update({
+      where: { id: groupData.id },
+      data: {
+        name,
+        description: description ?? null,
+        type,
+        aiEnabled,
+        aiMaxMessages: aiEnabled ? aiMaxMessages ?? null : null,
+        aiMaxTokens: aiEnabled ? aiMaxTokens ?? null : null,
+      },
+    });
+
+    return res.status(200).json(updatedGroup);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const addCoTeacherToGroup = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { email, groupId } = req.body as { email?: string; groupId?: string };
+
+    if (!email || !groupId) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    const user = req.user;
+
+    if (!user) {
+      return res.status(403).json({ error: "Not Authorized" });
+    }
+
+    const groupData = await prisma.group.findUnique({
+      where: { id: groupId },
+    });
+
+    if (!groupData) {
+      return res.status(404).json({ error: "Group Not Found" });
+    }
+
+    if (
+      !(await canAccessGroupWithFallback(
+        user.id,
+        groupData.id,
+        groupData.creatorId,
+        PERMISSIONS.GROUP_EDIT,
+      ))
+    ) {
+      return res.status(403).json({ error: "Not Authorized" });
+    }
+
+    const teacher = await prisma.user.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        globalRoleId: true,
+      },
+    });
+
+    if (!teacher) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    if (teacher.globalRoleId !== GLOBAL_ROLE_IDS.ORG_TEACHER) {
+      return res.status(400).json({
+        error: "Only organization teachers can be added as co-teachers",
+      });
+    }
+
+    await prisma.groupMember.upsert({
+      where: {
+        groupId_userId: {
+          groupId,
+          userId: teacher.id,
+        },
+      },
+      update: {
+        roleId: GROUP_ROLE_IDS.COTEACHER,
+      },
+      create: {
+        groupId,
+        userId: teacher.id,
+        roleId: GROUP_ROLE_IDS.COTEACHER,
+      },
+    });
+
+    return res.status(200).json({
+      message: "Co-teacher added successfully",
+      teacher: {
+        id: teacher.id,
+        email: teacher.email,
+        name: teacher.name,
+      },
+    });
   } catch (error) {
     next(error);
   }
@@ -1071,6 +1809,30 @@ export const addMemberToGroup = async (
         noOfMembers: { increment: result.count },
       },
     });
+
+    // Notify newly added students about the group
+    try {
+      if (studentIds.length > 0) {
+        await prisma.notification.create({
+          data: {
+            title: `Added to group: ${groupData.name}`,
+            message: `You have been added to the group ${groupData.name}.`,
+            type: NotificationType.ANNOUNCEMENT,
+            priority: NotificationPriority.NORMAL,
+            senderId: user.id,
+            groupId: groupData.id,
+            recipients: {
+              createMany: {
+                data: studentIds.map((id) => ({ userId: id })),
+                skipDuplicates: true,
+              },
+            },
+          },
+        });
+      }
+    } catch (notifyError) {
+      console.error("Failed to create add-member notifications", notifyError);
+    }
 
     return res.status(200).json({
       message: "Members added successfully",
