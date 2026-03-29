@@ -1,7 +1,7 @@
 import { Router } from "express";
 import teacherExamRouter from "@/routes/exam.teacher.route";
 import { isTeacher } from "@/middleware/isTeacher.middleware";
-import { addCoTeacherToGroup, addMemberToGroup, createGroup, getAllGroups, getGroupDetails, getGroupMembers, removeMemberFromGroup, updateGroupDetails } from "@/controllers/teacher.controllers";
+import { addCoTeacherToGroup, addMemberToGroup, createGroup, getAllGroups, getGroupDetails, getGroupExams, getGroupMembers, removeMemberFromGroup, updateGroupDetails } from "@/controllers/teacher.controllers";
 import { getGroupOverallStats, getGroupProblemStats, getStudentOverallStats, getStudentProblemStats, getAnalyticsStudents, getStudentDetailedAnalytics, getAnalyticsOverview, getAnalyticsCharts } from "@/controllers/teacher.stats.controllers";
 import { requirePermission } from "@/middleware/permission.middleware";
 import { PERMISSIONS } from "@/permissions/permission.constants";
@@ -32,6 +32,12 @@ router.get(
 	"/getgroupmembers",
 	requirePermission(PERMISSIONS.GROUP_VIEW, getGroupIdFromQuery),
 	getGroupMembers
+);
+
+router.get(
+	"/getgroupexams",
+	requirePermission(PERMISSIONS.GROUP_VIEW, getGroupIdFromQuery),
+	getGroupExams
 );
 
 router.post(

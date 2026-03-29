@@ -4,7 +4,11 @@ import { hasPermission } from "@/permissions/permission.service";
 import prisma from "@/utils/prisma";
 import { sendBatchToSQS } from "@/utils/sqs";
 import { NextFunction, Request, Response } from "express";
-import { Group, NotificationPriority, NotificationType } from "generated/prisma/client";
+import {
+  Group,
+  NotificationPriority,
+  NotificationType,
+} from "generated/prisma/client";
 import { z } from "zod";
 
 async function getExamGroupId(examId: string): Promise<string | undefined> {
@@ -124,9 +128,7 @@ export const fetchAllExams = async (
         });
 
         // Calculate passing percentage (attempts with totalScore >= 60%)
-        const passingCount = attempts.filter(
-          (a) => a.totalScore >= 60
-        ).length;
+        const passingCount = attempts.filter((a) => a.totalScore >= 60).length;
         const passingPercentage =
           attempts.length > 0 ? (passingCount / attempts.length) * 100 : 0;
 
@@ -143,7 +145,7 @@ export const fetchAllExams = async (
           passingPercentage: Math.round(passingPercentage * 100) / 100,
           lastSubmittedDate: lastAttempt?.submittedAt,
         };
-      })
+      }),
     );
 
     return res.status(200).json(enricedExams);
@@ -714,7 +716,9 @@ export const publishExam = async (
         const recipientIds = Array.from(
           new Set(
             members
-              .filter((m) => m.user.globalRoleId === GLOBAL_ROLE_IDS.ORG_STUDENT)
+              .filter(
+                (m) => m.user.globalRoleId === GLOBAL_ROLE_IDS.ORG_STUDENT,
+              )
               .map((m) => m.user.id),
           ),
         );
@@ -758,7 +762,6 @@ export const getAllGroups = async (req: Request, res: Response) => {
 
   let where: any = {};
 
-
   if (groupType == "CLASS" || groupType == "LAB") {
     where.type = groupType;
   }
@@ -792,7 +795,10 @@ export const getAllGroups = async (req: Request, res: Response) => {
     }
   }
 
-  const paginatedGroups = authorizedGroups.slice(skipNumber, skipNumber + takeNumber);
+  const paginatedGroups = authorizedGroups.slice(
+    skipNumber,
+    skipNumber + takeNumber,
+  );
 
   return res.status(200).json(paginatedGroups);
 };
@@ -1288,7 +1294,10 @@ export const createGroup = async (
           },
         });
       } catch (notifyError) {
-        console.error("Failed to create group member notifications", notifyError);
+        console.error(
+          "Failed to create group member notifications",
+          notifyError,
+        );
       }
     }
 
@@ -1552,6 +1561,59 @@ export const removeMemberFromGroup = async (
   }
 };
 
+export const getGroupExams = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const groupId = String(req.query.groupId);
+    const user = req.user;
+
+    const groupData = await prisma.group.findUnique({
+      where: { id: groupId },
+    });
+
+    if (!groupData) {
+      throw Error("Group Not Found");
+    }
+
+    if (
+      !(await canAccessGroupWithFallback(
+        user.id,
+        groupData.id,
+        groupData.creatorId,
+        PERMISSIONS.GROUP_VIEW,
+      ))
+    ) {
+      throw Error("Not Authorized");
+    }
+
+    const exams = await prisma.exam.findMany({
+      where: {
+        examGroups: {
+          some: {
+            groupId,
+          },
+        },
+      },
+      orderBy: { endDate: "desc" },
+      select: {
+        id: true,
+        title: true,
+        isPublished: true,
+        status: true,
+        startDate: true,
+        endDate: true,
+      },
+    });
+
+    return res.status(200).json(exams);
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const updateGroupDetails = async (
   req: Request,
   res: Response,
@@ -1634,8 +1696,8 @@ export const updateGroupDetails = async (
         description: description ?? null,
         type,
         aiEnabled,
-        aiMaxMessages: aiEnabled ? aiMaxMessages ?? null : null,
-        aiMaxTokens: aiEnabled ? aiMaxTokens ?? null : null,
+        aiMaxMessages: aiEnabled ? (aiMaxMessages ?? null) : null,
+        aiMaxTokens: aiEnabled ? (aiMaxTokens ?? null) : null,
       },
     });
 

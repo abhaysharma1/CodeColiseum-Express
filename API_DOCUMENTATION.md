@@ -546,6 +546,10 @@ All endpoints require Teacher role.
 - Query: `groupId` string
 - Response 200: user array for group members.
 
+### GET /teacher/getgroupexams
+- Query: `groupId` string
+- Response 200: array of exams linked to the group (each exam includes at least `id`, `title`, `isPublished`, `status`, `startDate`, `endDate`).
+
 ### POST /teacher/addmembertogroup
 - Body:
 ```json

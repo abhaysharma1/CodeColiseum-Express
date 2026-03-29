@@ -102,6 +102,7 @@ model Problem {
   description String            @db.Text
   difficulty  problemDifficulty
   source      String            @default("Unknown")
+  isPublished Boolean           @default(false)
 
   examProblems           ExamProblem[]
   tags                   ProblemTag[]
