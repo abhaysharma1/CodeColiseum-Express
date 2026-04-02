@@ -112,6 +112,44 @@ const problemSchema = z.object({
 
 const uploadProblemsSchema = z.array(problemSchema).max(2000);
 
+const problemEditorSchema = z.object({
+  title: z.string().min(1, "Title is required").max(300),
+  difficulty: z.enum(["EASY", "MEDIUM", "HARD"]).default("MEDIUM"),
+  tags: z.array(z.string()).default([]),
+  sections: z.object({
+    description: z.string().optional().default(""),
+    constraints: z.string().optional().default(""),
+    inputFormat: z.string().optional().default(""),
+    outputFormat: z.string().optional().default(""),
+  }),
+  testCases: z.object({
+    public: z.array(z.object({
+      id: z.string(),
+      input: z.string(),
+      output: z.string()
+    })).default([]),
+    hidden: z.array(z.object({
+      id: z.string(),
+      input: z.string(),
+      output: z.string()
+    })).default([]),
+  }),
+  driverCode: z.record(
+    z.enum(["cpp", "python", "java", "javascript"]),
+    z.object({
+      header: z.string().optional().default(""),
+      template: z.string().optional().default(""),
+      footer: z.string().optional().default(""),
+    })
+  ).default({}),
+  solutions: z.array(z.object({
+    id: z.string(),
+    language: z.enum(["cpp", "python", "java", "javascript"]),
+    code: z.string()
+  })).default([]),
+  status: z.enum(["DRAFT", "PUBLISHED"]).default("DRAFT")
+});
+
 const bulkSignUpSchema = z.object({
   emails: z
     .array(z.string().email("Invalid email address"))
@@ -947,3 +985,238 @@ export const resetUserPasswordByEmail = async (
     next(error);
   }
 };
+
+export const getProblemForEditor = async (req: Request, res: Response, next: NextFunction): Promise<any> => {
+  try {
+    const { id } = req.params;
+
+    const problem = await prisma.problem.findUnique({
+      where: { id },
+      include: {
+        tags: { include: { tag: true } },
+        runTestCase: true,
+        testCase: true,
+        driverCode: true,
+        referenceSolutions: true,
+      }
+    });
+
+    if (!problem) {
+      return res.status(404).json({ message: "Problem not found" });
+    }
+
+    // Attempt to reconstruct sections from markdown
+    // Format assumption: ## Description\n\n...\n\n## Constraints\n\n...\n\n## Input Format\n\n...\n\n## Output Format\n\n...
+    let description = problem.description;
+    let constraints = "";
+    let inputFormat = "";
+    let outputFormat = "";
+
+    const descSplit = description.split(/## Constraints/i);
+    if (descSplit.length > 1) {
+      description = descSplit[0].replace(/## Description/i, "").trim();
+      const afterDesc = ("## Constraints\n\n" + descSplit[1]);
+      
+      const constraintSplit = afterDesc.split(/## Input Format/i);
+      if (constraintSplit.length > 1) {
+        constraints = constraintSplit[0].replace(/## Constraints/i, "").trim();
+        const afterConstr = ("## Input Format\n\n" + constraintSplit[1]);
+        
+        const inputSplit = afterConstr.split(/## Output Format/i);
+        if (inputSplit.length > 1) {
+          inputFormat = inputSplit[0].replace(/## Input Format/i, "").trim();
+          outputFormat = inputSplit[1].replace(/## Output Format/i, "").trim();
+        } else {
+          inputFormat = afterConstr.replace(/## Input Format/i, "").trim();
+        }
+      } else {
+        constraints = afterDesc.replace(/## Constraints/i, "").trim();
+      }
+    }
+
+    // Format driverCode mapping
+    const driverCodeResult: any = {};
+    problem.driverCode.forEach(dc => {
+      driverCodeResult[dc.language.toLowerCase()] = {
+        header: dc.header || "",
+        template: dc.template || "",
+        footer: dc.footer || ""
+      };
+    });
+
+    // Handle testcases safely
+    const publicTests = problem.runTestCase?.cases ? (problem.runTestCase.cases as any[]) : [];
+    const hiddenTests = problem.testCase?.cases ? (problem.testCase.cases as any[]) : [];
+
+    const result = {
+      id: problem.id,
+      title: problem.title,
+      difficulty: problem.difficulty,
+      tags: problem.tags.map(t => t.tag.name),
+      sections: {
+        description,
+        constraints,
+        inputFormat,
+        outputFormat
+      },
+      testCases: {
+        public: publicTests.map((t: any, idx) => ({ id: t.id || `pub-${idx}`, input: t.input, output: t.output })),
+        hidden: hiddenTests.map((t: any, idx) => ({ id: t.id || `hid-${idx}`, input: t.input, output: t.output }))
+      },
+      driverCode: driverCodeResult,
+      solutions: problem.referenceSolutions.map(rs => ({ id: rs.id, language: rs.language, code: rs.code })),
+      status: problem.isPublished ? "PUBLISHED" : "DRAFT"
+    };
+
+    return res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const upsertProblem = async (req: Request, res: Response, next: NextFunction): Promise<any> => {
+  try {
+    const { id } = req.params;
+    const bodyResult = problemEditorSchema.safeParse(req.body);
+    if (!bodyResult.success) {
+      return res.status(400).json({ errors: bodyResult.error.format() });
+    }
+
+    const val = bodyResult.data;
+
+    const fullDescription = `## Description\n\n${val.sections.description.trim()}\n\n## Constraints\n\n${val.sections.constraints.trim()}\n\n## Input Format\n\n${val.sections.inputFormat.trim()}\n\n## Output Format\n\n${val.sections.outputFormat.trim()}`;
+
+    const isPublished = val.status === "PUBLISHED";
+
+    // Handle tags creation in parallel
+    await prisma.tag.createMany({
+      data: val.tags.map((t) => ({ name: t })),
+      skipDuplicates: true,
+    });
+    
+    const dbTags = await prisma.tag.findMany({
+      where: { name: { in: val.tags } },
+    });
+
+    const publicCasesJson = val.testCases.public.map((t, idx) => ({ id: t.id || `pub-${idx}`, input: t.input, output: t.output }));
+    const hiddenCasesJson = val.testCases.hidden.map((t, idx) => ({ id: t.id || `hid-${idx}`, input: t.input, output: t.output }));
+
+    const problemData = {
+      title: val.title,
+      description: fullDescription,
+      difficulty: val.difficulty as any,
+      isPublished,
+      runTestCase: {
+        create: { cases: publicCasesJson },
+      },
+      testCase: {
+        create: { cases: hiddenCasesJson },
+      },
+    };
+
+    let problem;
+    if (id) {
+       // Update path
+       const existingProblem = await prisma.problem.findUnique({ where: { id } });
+       if (!existingProblem) {
+         return res.status(404).json({ message: "Problem not found" });
+       }
+       
+       await prisma.$transaction(async (tx) => {
+          // Clear associations before update
+          await tx.problemTag.deleteMany({ where: { problemId: id } });
+          await tx.runTestCase.deleteMany({ where: { problemId: id } });
+          await tx.testCase.deleteMany({ where: { problemId: id } });
+          await tx.driverCode.deleteMany({ where: { problemId: id } });
+          await tx.referenceSolution.deleteMany({ where: { problemId: id } });
+
+          problem = await tx.problem.update({
+            where: { id },
+            data: {
+              title: val.title,
+              description: fullDescription,
+              difficulty: val.difficulty as any,
+              isPublished,
+              tags: {
+                create: dbTags.map(t => ({ tagId: t.id }))
+              },
+              runTestCase: { create: { cases: publicCasesJson } },
+              testCase: { create: { cases: hiddenCasesJson } },
+              driverCode: {
+                 create: Object.entries(val.driverCode).map(([lang, codes]) => ({
+                    language: lang as any,
+                    header: codes.header,
+                    template: codes.template,
+                    footer: codes.footer
+                 }))
+              },
+              referenceSolutions: {
+                 create: val.solutions.map(sol => ({
+                    language: sol.language as any,
+                    code: sol.code
+                 }))
+              }
+            }
+          });
+       });
+    } else {
+       // Create path
+       const maxNumberMatch = await prisma.problem.findFirst({
+         orderBy: { number: 'desc' }
+       });
+       const nextNumber = (maxNumberMatch?.number || 0) + 1;
+
+       problem = await prisma.problem.create({
+         data: {
+           title: val.title,
+           description: fullDescription,
+           difficulty: val.difficulty as any,
+           number: nextNumber,
+           isPublished,
+           tags: {
+             create: dbTags.map(t => ({ tagId: t.id }))
+           },
+           runTestCase: { create: { cases: publicCasesJson } },
+           testCase: { create: { cases: hiddenCasesJson } },
+           driverCode: {
+              create: Object.entries(val.driverCode).map(([lang, codes]) => ({
+                 language: lang as any,
+                 header: codes.header,
+                 template: codes.template,
+                 footer: codes.footer
+              }))
+           },
+           referenceSolutions: {
+              create: val.solutions.map(sol => ({
+                 language: sol.language as any,
+                 code: sol.code
+              }))
+           }
+         }
+       });
+    }
+
+    return res.status(200).json({ id: problem?.id, message: "Problem saved successfully" });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getProblemsForAdmin = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const problems = await prisma.problem.findMany({
+      select: {
+        id: true,
+        title: true,
+        isPublished: true,
+        difficulty: true,
+      },
+      orderBy: { number: 'asc' },
+    });
+
+    res.status(200).json({ problems });
+  } catch (error) {
+    next(error);
+  }
+};
+

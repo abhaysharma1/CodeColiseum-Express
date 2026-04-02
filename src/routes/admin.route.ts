@@ -12,6 +12,9 @@ import {
   adminSingleSignUp,
   assignUserRoleByEmail,
   resetUserPasswordByEmail,
+  getProblemForEditor,
+  upsertProblem,
+  getProblemsForAdmin,
 } from "@/controllers/admin.controllers";
 import {
   getOrgAnalyticsOverview,
@@ -38,6 +41,12 @@ router.post("/problem-test-generator", createUpdateProblemTestGenerator);
 
 // Upload Problems Route
 router.post("/upload-problems", uploadProblems);
+
+// Problem Editor Routes
+router.get("/problems", getProblemsForAdmin);
+router.get("/problems/:id", getProblemForEditor);
+router.post("/problems", upsertProblem);
+router.put("/problems/:id", upsertProblem);
 
 // Validation Routes
 router.post("/validate-complexity-cases", validateComplexityCases);

@@ -137,6 +137,13 @@ enum problemDifficulty {
   HARD
 }
 
+enum ProgrammingLanguage {
+  cpp
+  python
+  java
+  javascript
+}
+
 model TestCase {
   id        String   @id @default(uuid())
   cases     Json // Array of {input: string, output: string}
@@ -163,7 +170,7 @@ model complexityTestingCases {
 
 model driverCode {
   id         String  @id @default(uuid())
-  languageId Int
+  language   ProgrammingLanguage
   header     String?
   template   String?
   footer     String?
@@ -173,13 +180,13 @@ model driverCode {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([languageId, problemId])
+  @@unique([language, problemId])
   @@index([problemId])
 }
 
 model referenceSolution {
   id         String  @id @default(uuid())
-  languageId Int
+  language   ProgrammingLanguage
   code       String
   problemId  String
   problem    Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
