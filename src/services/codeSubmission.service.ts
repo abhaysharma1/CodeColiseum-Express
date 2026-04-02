@@ -8,6 +8,7 @@ import {
   sanitizeSourceCode,
 } from "../utils/exam.utils";
 import { SubmissionStatus } from "../../generated/prisma/enums";
+import { ProgrammingLanguage } from "../../generated/prisma/enums";
 import {
   updateStudentActivity,
   updateStudentProblemSubmissionTime,
@@ -39,6 +40,19 @@ const languages = [
   { id: 73, name: "Rust" },
   { id: 74, name: "TypeScript" },
 ];
+
+const languageIdToEnum: Record<number, ProgrammingLanguage> = {
+  54: "cpp",
+  71: "python",
+  62: "java",
+  63: "javascript",
+};
+
+const normalizeLanguage = (languageId?: number): ProgrammingLanguage =>
+  languageIdToEnum[languageId ?? -1] ?? "cpp";
+
+const normalizeJudgeLanguageId = (languageId?: number): number =>
+  languageIdToEnum[languageId ?? -1] ? (languageId as number) : 54;
 
 // Map Judge0 status IDs to status strings
 function mapJudge0Status(statusId: number): string {
@@ -142,7 +156,9 @@ export async function submitCodeService(
   req: Request,
   { examId, problemId, sourceCode, languageId }: SubmitCodeRequest,
 ): Promise<SubmitCodeResponse> {
-  const language = languages.find((item) => item.id == languageId)?.name;
+  const normalizedLanguage = normalizeLanguage(languageId);
+  const judgeLanguageId = normalizeJudgeLanguageId(languageId);
+  const language = languages.find((item) => item.id == judgeLanguageId)?.name;
   const JUDGE0_API_KEY = process.env.JUDGE0_API_KEY;
   const JUDGE0_DOMAIN = process.env.JUDGE0_DOMAIN;
 
@@ -193,7 +209,7 @@ export async function submitCodeService(
   const driver = await prisma.driverCode.findUnique({
     where: {
       language_problemId: {
-        language: "cpp",
+        language: normalizedLanguage,
         problemId,
       },
     },
@@ -204,7 +220,7 @@ export async function submitCodeService(
   );
 
   const submissions = cases.map((item: any) => ({
-    language_id: languageId,
+    language_id: judgeLanguageId,
     source_code: encodeBase64(finalCode),
     stdin: encodeBase64(item.input),
     expected_output: encodeBase64(item.output),

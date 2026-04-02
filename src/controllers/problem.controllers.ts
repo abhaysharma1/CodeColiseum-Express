@@ -3,6 +3,7 @@ import { NextFunction, Request, Response } from "express";
 import { auth } from "../utils/auth";
 import { fromNodeHeaders } from "better-auth/node";
 import { runCodeService, RunCodeRequest } from "../services/codeRunner.service";
+import { ProgrammingLanguage } from "../../generated/prisma/enums";
 import {
   submitCodeService,
   SubmitCodeRequest,
@@ -10,52 +11,15 @@ import {
 import { enqueuePracticeAIReview } from "@/services/startAiEvaluation.service";
 import { redis } from "@/config/upstashRedis.config";
 
-const languageByJudge0Id: Record<number, "cpp" | "python" | "java" | "javascript"> = {
+const languageIdToEnum: Record<number, ProgrammingLanguage> = {
   54: "cpp",
   71: "python",
   62: "java",
   63: "javascript",
 };
 
-const resolveLanguageKey = (input: {
-  language?: unknown;
-  languageId?: unknown;
-}): "cpp" | "python" | "java" | "javascript" => {
-  if (typeof input.language === "string") {
-    const value = input.language.toLowerCase().trim();
-    if (value === "cpp" || value === "python" || value === "java" || value === "javascript") {
-      return value;
-    }
-  }
-
-  if (typeof input.languageId === "number") {
-    return languageByJudge0Id[input.languageId] ?? "cpp";
-  }
-
-  if (typeof input.languageId === "string") {
-    const parsed = Number(input.languageId);
-    if (Number.isFinite(parsed)) {
-      return languageByJudge0Id[parsed] ?? "cpp";
-    }
-  }
-
-  return "cpp";
-};
-
-const resolveJudge0LanguageId = (languageId: unknown): number => {
-  if (typeof languageId === "number" && Number.isFinite(languageId)) {
-    return languageId;
-  }
-
-  if (typeof languageId === "string") {
-    const parsed = Number(languageId);
-    if (Number.isFinite(parsed)) {
-      return parsed;
-    }
-  }
-
-  return 54;
-};
+const normalizeLanguage = (languageId?: number): ProgrammingLanguage =>
+  languageIdToEnum[languageId ?? -1] ?? "cpp";
 
 export const getProblems = async (
   req: Request,
@@ -233,8 +197,8 @@ export const getTemplateCode = async (
   next: NextFunction,
 ) => {
   try {
-    const { problemId, languageId, language } = req.body;
-    const resolvedLanguage = resolveLanguageKey({ language, languageId });
+    const { problemId, languageId } = req.body;
+    const language = normalizeLanguage(Number(languageId));
 
     if (!problemId) {
       const error = new Error("problemId is required");
@@ -257,7 +221,7 @@ export const getTemplateCode = async (
     const template = await prisma.driverCode.findUnique({
       where: {
         language_problemId: {
-          language: resolvedLanguage,
+          language,
           problemId: problemId,
         },
       },

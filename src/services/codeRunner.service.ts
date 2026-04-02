@@ -3,6 +3,7 @@ import prisma from "../utils/prisma";
 import { auth } from "../utils/auth";
 import { fromNodeHeaders } from "better-auth/node";
 import axios from "axios";
+import { ProgrammingLanguage } from "../../generated/prisma/enums";
 
 /* ----------------------------- Types ----------------------------- */
 
@@ -59,6 +60,19 @@ const reconstructJudge0Response = (raw: Judge0Raw): JudgeResponse => ({
   message: decodeBase64(raw.message),
 });
 
+const languageIdToEnum: Record<number, ProgrammingLanguage> = {
+  54: "cpp",
+  71: "python",
+  62: "java",
+  63: "javascript",
+};
+
+const normalizeLanguage = (languageId?: number): ProgrammingLanguage =>
+  languageIdToEnum[languageId ?? -1] ?? "cpp";
+
+const normalizeJudgeLanguageId = (languageId?: number): number =>
+  languageIdToEnum[languageId ?? -1] ? (languageId as number) : 54;
+
 export function sanitizeSourceCode(code: string): string {
   return (
     code
@@ -97,10 +111,8 @@ export async function runCodeService(
   req: Request,
   { questionId, languageId, code }: RunCodeRequest,
 ): Promise<RunCodeResponse> {
-  const resolvedLanguageId =
-    typeof languageId === "number" && Number.isFinite(languageId)
-      ? languageId
-      : 54;
+  const normalizedLanguage = normalizeLanguage(languageId);
+  const judgeLanguageId = normalizeJudgeLanguageId(languageId);
 
   const session = await auth.api.getSession({
     headers: fromNodeHeaders(req.headers),
@@ -146,7 +158,7 @@ export async function runCodeService(
   const driver = await prisma.driverCode.findUnique({
     where: {
       language_problemId: {
-        language: "cpp",
+        language: normalizedLanguage,
         problemId: problem.id,
       },
     },
@@ -159,7 +171,7 @@ export async function runCodeService(
   /* ----------------------- Judge0 submit ----------------------- */
 
   const submissions = cases.map((tc) => ({
-    language_id: resolvedLanguageId,
+    language_id: judgeLanguageId,
     source_code: encodeBase64(finalCode),
     stdin: encodeBase64(tc.input),
     expected_output: encodeBase64(tc.output),
