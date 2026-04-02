@@ -4,6 +4,7 @@ import {
   expectedComplexity,
   GeneratorPattern,
   GeneratorType,
+  ProgrammingLanguage,
 } from "../../generated/prisma/enums";
 import { Prisma } from "../../generated/prisma/client";
 import prisma from "@/utils/prisma";
@@ -61,6 +62,26 @@ const reconstructJudge0Response = (raw: Judge0Raw): JudgeResponse => ({
   compile_output: decodeBase64(raw.compile_output),
   message: decodeBase64(raw.message),
 });
+
+const languageIdToEnum: Record<number, ProgrammingLanguage> = {
+  54: "cpp",
+  71: "python",
+  62: "java",
+  63: "javascript",
+};
+
+const judgeLanguageIdByEnum: Record<ProgrammingLanguage, number> = {
+  cpp: 54,
+  python: 71,
+  java: 62,
+  javascript: 63,
+};
+
+const normalizeLanguage = (languageId?: number): ProgrammingLanguage =>
+  languageIdToEnum[languageId ?? -1] ?? "cpp";
+
+const toJudgeLanguageId = (language: ProgrammingLanguage): number =>
+  judgeLanguageIdByEnum[language] ?? 54;
 
 // Validation schemas
 const complexityCasesSchema = z.object({
@@ -134,7 +155,7 @@ const problemEditorSchema = z.object({
       output: z.string()
     })).default([]),
   }),
-  driverCode: z.record(
+  driverCode: z.partialRecord(
     z.enum(["cpp", "python", "java", "javascript"]),
     z.object({
       header: z.string().optional().default(""),
@@ -271,6 +292,7 @@ export const uploadDriverCode = async (req: Request, res: Response) => {
     }
 
     const { problemId, languageId, header, template, footer } = validation.data;
+    const language = normalizeLanguage(languageId);
 
     const problem = await prisma.problem.findUnique({
       where: { id: problemId },
@@ -283,14 +305,14 @@ export const uploadDriverCode = async (req: Request, res: Response) => {
     // Delete existing driver code
     await prisma.driverCode.deleteMany({
       where: {
-        languageId,
+        language,
         problemId,
       },
     });
 
     const newCode = await prisma.driverCode.create({
       data: {
-        languageId,
+        language,
         header,
         template,
         footer,
@@ -459,7 +481,7 @@ export const uploadProblems = async (req: Request, res: Response) => {
           await tx.referenceSolution.create({
             data: {
               problemId: problem.id,
-              languageId: p.referenceSolution.languageId,
+              language: normalizeLanguage(p.referenceSolution.languageId),
               code: p.referenceSolution.code,
             },
           });
@@ -521,7 +543,7 @@ export const validateComplexityCases = async (req: Request, res: Response) => {
     for (let i = 0; i < cases.length; i++) {
       try {
         const submission = {
-          language_id: refCode.languageId,
+          language_id: toJudgeLanguageId(refCode.language),
           source_code: encodeBase64(refCode.code),
           stdin: encodeBase64(cases[i].input),
           expected_output: encodeBase64(cases[i].output),
@@ -988,7 +1010,12 @@ export const resetUserPasswordByEmail = async (
 
 export const getProblemForEditor = async (req: Request, res: Response, next: NextFunction): Promise<any> => {
   try {
-    const { id } = req.params;
+    const rawId = req.params.id;
+    const id = Array.isArray(rawId) ? rawId[0] : rawId;
+
+    if (!id) {
+      return res.status(400).json({ message: "Problem id is required" });
+    }
 
     const problem = await prisma.problem.findUnique({
       where: { id },
@@ -1076,7 +1103,8 @@ export const getProblemForEditor = async (req: Request, res: Response, next: Nex
 
 export const upsertProblem = async (req: Request, res: Response, next: NextFunction): Promise<any> => {
   try {
-    const { id } = req.params;
+    const rawId = req.params.id;
+    const id = Array.isArray(rawId) ? rawId[0] : rawId;
     const bodyResult = problemEditorSchema.safeParse(req.body);
     if (!bodyResult.success) {
       return res.status(400).json({ errors: bodyResult.error.format() });

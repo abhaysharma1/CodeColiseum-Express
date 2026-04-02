@@ -3,12 +3,23 @@ import { NextFunction, Request, Response } from "express";
 import { auth } from "../utils/auth";
 import { fromNodeHeaders } from "better-auth/node";
 import { runCodeService, RunCodeRequest } from "../services/codeRunner.service";
+import { ProgrammingLanguage } from "../../generated/prisma/enums";
 import {
   submitCodeService,
   SubmitCodeRequest,
 } from "../services/problemSubmission.service";
 import { enqueuePracticeAIReview } from "@/services/startAiEvaluation.service";
 import { redis } from "@/config/upstashRedis.config";
+
+const languageIdToEnum: Record<number, ProgrammingLanguage> = {
+  54: "cpp",
+  71: "python",
+  62: "java",
+  63: "javascript",
+};
+
+const normalizeLanguage = (languageId?: number): ProgrammingLanguage =>
+  languageIdToEnum[languageId ?? -1] ?? "cpp";
 
 export const getProblems = async (
   req: Request,
@@ -187,6 +198,7 @@ export const getTemplateCode = async (
 ) => {
   try {
     const { problemId, languageId } = req.body;
+    const language = normalizeLanguage(Number(languageId));
 
     if (!problemId || !languageId) {
       const error = new Error("problemId and languageId are required");
@@ -208,14 +220,14 @@ export const getTemplateCode = async (
 
     const template = await prisma.driverCode.findUnique({
       where: {
-        languageId_problemId: {
-          languageId: languageId,
+        language_problemId: {
+          language,
           problemId: problemId,
         },
       },
       select: {
         template: true,
-        languageId: true,
+        language: true,
         header: false,
         footer: false,
       },

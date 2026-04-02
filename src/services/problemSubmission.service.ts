@@ -3,6 +3,7 @@ import prisma from "../utils/prisma";
 import { auth } from "../utils/auth";
 import { fromNodeHeaders } from "better-auth/node";
 import { sanitizeSourceCode } from "./codeRunner.service";
+import { ProgrammingLanguage } from "../../generated/prisma/enums";
 
 /* -------------------------- Base64 utils -------------------------- */
 
@@ -65,6 +66,19 @@ const languages = [
 
 const getLanguageNameById = (id: number) =>
   languages.find((l) => l.id === id)?.name ?? "Unknown";
+
+const languageIdToEnum: Record<number, ProgrammingLanguage> = {
+  54: "cpp",
+  71: "python",
+  62: "java",
+  63: "javascript",
+};
+
+const normalizeLanguage = (languageId?: number): ProgrammingLanguage =>
+  languageIdToEnum[languageId ?? -1] ?? "cpp";
+
+const normalizeJudgeLanguageId = (languageId?: number): number =>
+  languageIdToEnum[languageId ?? -1] ? (languageId as number) : 54;
 
 // Complexity analysis functions
 const ranges = {
@@ -136,6 +150,9 @@ export async function submitCodeService(
   req: Request,
   { questionId, languageId, code }: SubmitCodeRequest,
 ): Promise<SubmitCodeSuccessResponse> {
+  const normalizedLanguage = normalizeLanguage(languageId);
+  const judgeLanguageId = normalizeJudgeLanguageId(languageId);
+
   const session = await auth.api.getSession({
     headers: fromNodeHeaders(req.headers),
   });
@@ -202,8 +219,8 @@ export async function submitCodeService(
 
   const driver = await prisma.driverCode.findUnique({
     where: {
-      languageId_problemId: {
-        languageId,
+      language_problemId: {
+        language: normalizedLanguage,
         problemId: questionId,
       },
     },
@@ -216,7 +233,7 @@ export async function submitCodeService(
   /* -------------------------- Batch submissions -------------------------- */
 
   const submissions = functionalCases.map((tc) => ({
-    language_id: languageId,
+    language_id: judgeLanguageId,
     source_code: encodeBase64(finalCode),
     stdin: encodeBase64(tc.input),
     expected_output: encodeBase64(tc.output),
@@ -294,10 +311,10 @@ export async function submitCodeService(
       await prisma.selfSubmission.create({
         data: {
           code,
-          language: getLanguageNameById(languageId),
+          language: getLanguageNameById(judgeLanguageId),
           noOfPassedCases: passed,
           failedCase: {
-            language_id: languageId,
+            language_id: judgeLanguageId,
             source_code: finalCode,
             stdin: functionalCases[i].input,
             expected_output: functionalCases[i].output,
@@ -313,7 +330,7 @@ export async function submitCodeService(
         noOfPassedCases: passed,
         totalCases: functionalCases.length,
         failedCase: {
-          language_id: languageId,
+          language_id: judgeLanguageId,
           source_code: finalCode,
           stdin: functionalCases[i].input,
           expected_output: functionalCases[i].output,
@@ -381,7 +398,7 @@ export async function submitCodeService(
       "X-AUTH_TOKEN": JUDGE0_API_KEY,
     },
     body: JSON.stringify({
-      language_id: languageId,
+      language_id: judgeLanguageId,
       source_code: encodeBase64(finalCode),
       stdin: encodeBase64(complexityCases[0].input),
     }),
@@ -397,7 +414,7 @@ export async function submitCodeService(
           "X-AUTH_TOKEN": JUDGE0_API_KEY,
         },
         body: JSON.stringify({
-          language_id: languageId,
+          language_id: judgeLanguageId,
           source_code: encodeBase64(finalCode),
           stdin: encodeBase64(c.input),
         }),
@@ -439,7 +456,7 @@ export async function submitCodeService(
   await prisma.selfSubmission.create({
     data: {
       code,
-      language: getLanguageNameById(languageId),
+      language: getLanguageNameById(judgeLanguageId),
       noOfPassedCases: passed,
       userId: session.user.id,
       problemId: questionId,
