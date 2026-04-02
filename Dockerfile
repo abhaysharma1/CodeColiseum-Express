@@ -42,6 +42,8 @@ COPY --from=builder --chown=nodeuser:nodejs /app/prisma ./prisma
 COPY --from=builder --chown=nodeuser:nodejs /app/package.json ./package.json
 COPY --from=builder --chown=nodeuser:nodejs /app/prisma.config.ts ./prisma.config.ts
 
+RUN npm install prisma
+
 USER nodeuser
 
 # Expose port
