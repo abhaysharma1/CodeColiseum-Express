@@ -114,7 +114,7 @@ function generateArray(
 
 export interface SubmitCodeRequest {
   questionId: string;
-  languageId: number;
+  languageId?: number;
   code: string;
 }
 
@@ -136,6 +136,11 @@ export async function submitCodeService(
   req: Request,
   { questionId, languageId, code }: SubmitCodeRequest,
 ): Promise<SubmitCodeSuccessResponse> {
+  const resolvedLanguageId =
+    typeof languageId === "number" && Number.isFinite(languageId)
+      ? languageId
+      : 54;
+
   const session = await auth.api.getSession({
     headers: fromNodeHeaders(req.headers),
   });
@@ -157,7 +162,6 @@ export async function submitCodeService(
     (error as any).status = 401;
     throw error;
   }
-
 
   const JUDGE0_DOMAIN = process.env.JUDGE0_DOMAIN;
   const JUDGE0_API_KEY = process.env.JUDGE0_API_KEY;
@@ -202,8 +206,8 @@ export async function submitCodeService(
 
   const driver = await prisma.driverCode.findUnique({
     where: {
-      languageId_problemId: {
-        languageId,
+      language_problemId: {
+        language: "cpp",
         problemId: questionId,
       },
     },
@@ -216,7 +220,7 @@ export async function submitCodeService(
   /* -------------------------- Batch submissions -------------------------- */
 
   const submissions = functionalCases.map((tc) => ({
-    language_id: languageId,
+    language_id: resolvedLanguageId,
     source_code: encodeBase64(finalCode),
     stdin: encodeBase64(tc.input),
     expected_output: encodeBase64(tc.output),
@@ -294,10 +298,10 @@ export async function submitCodeService(
       await prisma.selfSubmission.create({
         data: {
           code,
-          language: getLanguageNameById(languageId),
+          language: getLanguageNameById(resolvedLanguageId),
           noOfPassedCases: passed,
           failedCase: {
-            language_id: languageId,
+            language_id: resolvedLanguageId,
             source_code: finalCode,
             stdin: functionalCases[i].input,
             expected_output: functionalCases[i].output,
@@ -313,7 +317,7 @@ export async function submitCodeService(
         noOfPassedCases: passed,
         totalCases: functionalCases.length,
         failedCase: {
-          language_id: languageId,
+          language_id: resolvedLanguageId,
           source_code: finalCode,
           stdin: functionalCases[i].input,
           expected_output: functionalCases[i].output,
@@ -439,7 +443,7 @@ export async function submitCodeService(
   await prisma.selfSubmission.create({
     data: {
       code,
-      language: getLanguageNameById(languageId),
+      language: getLanguageNameById(resolvedLanguageId),
       noOfPassedCases: passed,
       userId: session.user.id,
       problemId: questionId,

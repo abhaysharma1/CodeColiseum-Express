@@ -82,7 +82,7 @@ export function sanitizeSourceCode(code: string): string {
 
 export interface RunCodeRequest {
   questionId: string;
-  languageId: number;
+  languageId?: number;
   code: string;
 }
 
@@ -97,6 +97,11 @@ export async function runCodeService(
   req: Request,
   { questionId, languageId, code }: RunCodeRequest,
 ): Promise<RunCodeResponse> {
+  const resolvedLanguageId =
+    typeof languageId === "number" && Number.isFinite(languageId)
+      ? languageId
+      : 54;
+
   const session = await auth.api.getSession({
     headers: fromNodeHeaders(req.headers),
   });
@@ -140,8 +145,8 @@ export async function runCodeService(
 
   const driver = await prisma.driverCode.findUnique({
     where: {
-      languageId_problemId: {
-        languageId: languageId,
+      language_problemId: {
+        language: "cpp",
         problemId: problem.id,
       },
     },
@@ -154,7 +159,7 @@ export async function runCodeService(
   /* ----------------------- Judge0 submit ----------------------- */
 
   const submissions = cases.map((tc) => ({
-    language_id: languageId,
+    language_id: resolvedLanguageId,
     source_code: encodeBase64(finalCode),
     stdin: encodeBase64(tc.input),
     expected_output: encodeBase64(tc.output),

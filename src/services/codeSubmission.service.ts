@@ -192,8 +192,8 @@ export async function submitCodeService(
   // Get driver code for final code assembly
   const driver = await prisma.driverCode.findUnique({
     where: {
-      languageId_problemId: {
-        languageId,
+      language_problemId: {
+        language: "cpp",
         problemId,
       },
     },
@@ -585,13 +585,14 @@ export async function submitCodeService(
       group.id,
       problemId,
       totalTimeTaken,
-    ).catch((err) => console.error("Failed to update submission time stats:", err));
+    ).catch((err) =>
+      console.error("Failed to update submission time stats:", err),
+    );
 
     updateGroupProblemAverageTime(group.id, problemId, totalTimeTaken).catch(
       (err) => console.error("Failed to update group problem time stats:", err),
     );
   }
-
 
   return {
     success: true,

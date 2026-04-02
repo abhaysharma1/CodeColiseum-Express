@@ -10,6 +10,53 @@ import {
 import { enqueuePracticeAIReview } from "@/services/startAiEvaluation.service";
 import { redis } from "@/config/upstashRedis.config";
 
+const languageByJudge0Id: Record<number, "cpp" | "python" | "java" | "javascript"> = {
+  54: "cpp",
+  71: "python",
+  62: "java",
+  63: "javascript",
+};
+
+const resolveLanguageKey = (input: {
+  language?: unknown;
+  languageId?: unknown;
+}): "cpp" | "python" | "java" | "javascript" => {
+  if (typeof input.language === "string") {
+    const value = input.language.toLowerCase().trim();
+    if (value === "cpp" || value === "python" || value === "java" || value === "javascript") {
+      return value;
+    }
+  }
+
+  if (typeof input.languageId === "number") {
+    return languageByJudge0Id[input.languageId] ?? "cpp";
+  }
+
+  if (typeof input.languageId === "string") {
+    const parsed = Number(input.languageId);
+    if (Number.isFinite(parsed)) {
+      return languageByJudge0Id[parsed] ?? "cpp";
+    }
+  }
+
+  return "cpp";
+};
+
+const resolveJudge0LanguageId = (languageId: unknown): number => {
+  if (typeof languageId === "number" && Number.isFinite(languageId)) {
+    return languageId;
+  }
+
+  if (typeof languageId === "string") {
+    const parsed = Number(languageId);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return 54;
+};
+
 export const getProblems = async (
   req: Request,
   res: Response,
@@ -186,10 +233,11 @@ export const getTemplateCode = async (
   next: NextFunction,
 ) => {
   try {
-    const { problemId, languageId } = req.body;
+    const { problemId, languageId, language } = req.body;
+    const resolvedLanguage = resolveLanguageKey({ language, languageId });
 
-    if (!problemId || !languageId) {
-      const error = new Error("problemId and languageId are required");
+    if (!problemId) {
+      const error = new Error("problemId is required");
       (error as any).status = 400;
       return next(error);
     }
@@ -208,14 +256,14 @@ export const getTemplateCode = async (
 
     const template = await prisma.driverCode.findUnique({
       where: {
-        languageId_problemId: {
-          languageId: languageId,
+        language_problemId: {
+          language: resolvedLanguage,
           problemId: problemId,
         },
       },
       select: {
         template: true,
-        languageId: true,
+        language: true,
         header: false,
         footer: false,
       },
@@ -235,16 +283,17 @@ export const runCode = async (
 ) => {
   try {
     const { questionId, languageId, code } = req.body;
+    const resolvedLanguageId = resolveJudge0LanguageId(languageId);
 
-    if (!questionId || !languageId || !code) {
-      const error = new Error("questionId, languageId, and code are required");
+    if (!questionId || !code) {
+      const error = new Error("questionId and code are required");
       (error as any).status = 400;
       return next(error);
     }
 
     const requestData: RunCodeRequest = {
       questionId,
-      languageId,
+      languageId: resolvedLanguageId,
       code,
     };
 
@@ -263,16 +312,17 @@ export const submitCode = async (
 ) => {
   try {
     const { questionId, languageId, code } = req.body;
+    const resolvedLanguageId = resolveJudge0LanguageId(languageId);
 
-    if (!questionId || !languageId || !code) {
-      const error = new Error("questionId, languageId, and code are required");
+    if (!questionId || !code) {
+      const error = new Error("questionId and code are required");
       (error as any).status = 400;
       return next(error);
     }
 
     const requestData: SubmitCodeRequest = {
       questionId,
-      languageId,
+      languageId: resolvedLanguageId,
       code,
     };
 

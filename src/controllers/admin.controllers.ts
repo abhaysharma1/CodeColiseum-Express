@@ -54,6 +54,77 @@ const decodeBase64 = (value?: string | null): string | null => {
   }
 };
 
+const supportedLanguages = ["cpp", "python", "java", "javascript"] as const;
+type SupportedLanguage = (typeof supportedLanguages)[number];
+
+const judge0LanguageByKey: Record<SupportedLanguage, number> = {
+  cpp: 54,
+  python: 71,
+  java: 62,
+  javascript: 63,
+};
+
+const languageByJudge0Id: Record<number, SupportedLanguage> = {
+  54: "cpp",
+  71: "python",
+  62: "java",
+  63: "javascript",
+};
+
+const normalizeLanguage = (value?: unknown): SupportedLanguage => {
+  if (typeof value !== "string") {
+    return "cpp";
+  }
+
+  const normalized = value.toLowerCase().trim();
+  if ((supportedLanguages as readonly string[]).includes(normalized)) {
+    return normalized as SupportedLanguage;
+  }
+
+  return "cpp";
+};
+
+const resolveLanguageFromInput = (input: {
+  language?: unknown;
+  languageId?: unknown;
+}): SupportedLanguage => {
+  if (typeof input.language === "string") {
+    return normalizeLanguage(input.language);
+  }
+
+  if (typeof input.languageId === "number") {
+    return languageByJudge0Id[input.languageId] ?? "cpp";
+  }
+
+  if (typeof input.languageId === "string") {
+    const parsed = Number(input.languageId);
+    if (Number.isFinite(parsed)) {
+      return languageByJudge0Id[parsed] ?? "cpp";
+    }
+  }
+
+  return "cpp";
+};
+
+const resolveJudge0LanguageId = (input: {
+  language?: unknown;
+  languageId?: unknown;
+}): number => {
+  if (typeof input.languageId === "number" && Number.isFinite(input.languageId)) {
+    return input.languageId;
+  }
+
+  if (typeof input.languageId === "string") {
+    const parsed = Number(input.languageId);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  const language = resolveLanguageFromInput(input);
+  return judge0LanguageByKey[language];
+};
+
 const reconstructJudge0Response = (raw: Judge0Raw): JudgeResponse => ({
   ...raw,
   stdout: decodeBase64(raw.stdout),
@@ -76,7 +147,8 @@ const complexityCasesSchema = z.object({
 
 const driverCodeSchema = z.object({
   problemId: z.string(),
-  languageId: z.number(),
+  language: z.enum(supportedLanguages).optional(),
+  languageId: z.number().int().optional(),
   header: z.string().optional(),
   template: z.string().optional(),
   footer: z.string().optional(),
@@ -107,7 +179,11 @@ const problemSchema = z.object({
   tags: z.array(z.string()).optional().default([]),
   publicTests: z.array(testSchema).optional().default([]),
   hiddenTests: z.array(testSchema).optional().default([]),
-  referenceSolution: z.object({ languageId: z.number(), code: z.string() }),
+  referenceSolution: z.object({
+    language: z.enum(supportedLanguages).optional(),
+    languageId: z.number().int().optional(),
+    code: z.string(),
+  }),
 });
 
 const uploadProblemsSchema = z.array(problemSchema).max(2000);
@@ -141,7 +217,12 @@ const problemEditorSchema = z.object({
       template: z.string().optional().default(""),
       footer: z.string().optional().default(""),
     })
-  ).default({}),
+  ).default({
+    cpp: { header: "", template: "", footer: "" },
+    python: { header: "", template: "", footer: "" },
+    java: { header: "", template: "", footer: "" },
+    javascript: { header: "", template: "", footer: "" },
+  }),
   solutions: z.array(z.object({
     id: z.string(),
     language: z.enum(["cpp", "python", "java", "javascript"]),
@@ -270,7 +351,8 @@ export const uploadDriverCode = async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Validation Failed" });
     }
 
-    const { problemId, languageId, header, template, footer } = validation.data;
+    const { problemId, languageId, language, header, template, footer } = validation.data;
+    const resolvedLanguage = resolveLanguageFromInput({ language, languageId });
 
     const problem = await prisma.problem.findUnique({
       where: { id: problemId },
@@ -283,14 +365,14 @@ export const uploadDriverCode = async (req: Request, res: Response) => {
     // Delete existing driver code
     await prisma.driverCode.deleteMany({
       where: {
-        languageId,
+        language: resolvedLanguage,
         problemId,
       },
     });
 
     const newCode = await prisma.driverCode.create({
       data: {
-        languageId,
+        language: resolvedLanguage,
         header,
         template,
         footer,
@@ -459,7 +541,10 @@ export const uploadProblems = async (req: Request, res: Response) => {
           await tx.referenceSolution.create({
             data: {
               problemId: problem.id,
-              languageId: p.referenceSolution.languageId,
+              language: resolveLanguageFromInput({
+                language: p.referenceSolution.language,
+                languageId: p.referenceSolution.languageId,
+              }),
               code: p.referenceSolution.code,
             },
           });
@@ -521,7 +606,7 @@ export const validateComplexityCases = async (req: Request, res: Response) => {
     for (let i = 0; i < cases.length; i++) {
       try {
         const submission = {
-          language_id: refCode.languageId,
+          language_id: judge0LanguageByKey[normalizeLanguage(refCode.language)],
           source_code: encodeBase64(refCode.code),
           stdin: encodeBase64(cases[i].input),
           expected_output: encodeBase64(cases[i].output),
@@ -617,7 +702,10 @@ export const validateProblem = async (req: Request, res: Response) => {
     const code = firstProblem.referenceSolution.code;
 
     const submissions = cases.map((item: any) => ({
-      language_id: firstProblem.referenceSolution.languageId,
+      language_id: resolveJudge0LanguageId({
+        language: firstProblem.referenceSolution.language,
+        languageId: firstProblem.referenceSolution.languageId,
+      }),
       source_code: encodeBase64(code),
       stdin: encodeBase64(item.input),
       expected_output: encodeBase64(item.output),
@@ -988,7 +1076,11 @@ export const resetUserPasswordByEmail = async (
 
 export const getProblemForEditor = async (req: Request, res: Response, next: NextFunction): Promise<any> => {
   try {
-    const { id } = req.params;
+    const id = typeof req.params.id === "string" ? req.params.id : "";
+
+    if (!id) {
+      return res.status(400).json({ message: "Problem id is required" });
+    }
 
     const problem = await prisma.problem.findUnique({
       where: { id },
@@ -1036,7 +1128,7 @@ export const getProblemForEditor = async (req: Request, res: Response, next: Nex
 
     // Format driverCode mapping
     const driverCodeResult: any = {};
-    problem.driverCode.forEach(dc => {
+    problem.driverCode.forEach((dc) => {
       driverCodeResult[dc.language.toLowerCase()] = {
         header: dc.header || "",
         template: dc.template || "",
@@ -1052,7 +1144,7 @@ export const getProblemForEditor = async (req: Request, res: Response, next: Nex
       id: problem.id,
       title: problem.title,
       difficulty: problem.difficulty,
-      tags: problem.tags.map(t => t.tag.name),
+      tags: problem.tags.map((t) => t.tag.name),
       sections: {
         description,
         constraints,
@@ -1064,7 +1156,7 @@ export const getProblemForEditor = async (req: Request, res: Response, next: Nex
         hidden: hiddenTests.map((t: any, idx) => ({ id: t.id || `hid-${idx}`, input: t.input, output: t.output }))
       },
       driverCode: driverCodeResult,
-      solutions: problem.referenceSolutions.map(rs => ({ id: rs.id, language: rs.language, code: rs.code })),
+      solutions: problem.referenceSolutions.map((rs) => ({ id: rs.id, language: rs.language, code: rs.code })),
       status: problem.isPublished ? "PUBLISHED" : "DRAFT"
     };
 
@@ -1076,7 +1168,7 @@ export const getProblemForEditor = async (req: Request, res: Response, next: Nex
 
 export const upsertProblem = async (req: Request, res: Response, next: NextFunction): Promise<any> => {
   try {
-    const { id } = req.params;
+    const id = typeof req.params.id === "string" ? req.params.id : undefined;
     const bodyResult = problemEditorSchema.safeParse(req.body);
     if (!bodyResult.success) {
       return res.status(400).json({ errors: bodyResult.error.format() });
@@ -1117,7 +1209,7 @@ export const upsertProblem = async (req: Request, res: Response, next: NextFunct
     let problem;
     if (id) {
        // Update path
-       const existingProblem = await prisma.problem.findUnique({ where: { id } });
+      const existingProblem = await prisma.problem.findUnique({ where: { id } });
        if (!existingProblem) {
          return res.status(404).json({ message: "Problem not found" });
        }
