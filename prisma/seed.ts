@@ -3,10 +3,24 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client";
 import { PERMISSIONS } from "../src/permissions/permission.constants";
 
-const connectionString = process.env.DIRECT_URL;
-if (!connectionString) {
-  throw new Error("DIRECT_URL must be set before running RBAC seed");
+const rawConnectionString = process.env.DIRECT_URL || process.env.DATABASE_URL;
+if (!rawConnectionString) {
+  throw new Error("DIRECT_URL or DATABASE_URL must be set before running RBAC seed");
 }
+
+const connectionUrl = new URL(rawConnectionString);
+const useLibpqCompat = process.env.PG_USE_LIBPQ_COMPAT === "true";
+
+if (useLibpqCompat) {
+  connectionUrl.searchParams.set("uselibpqcompat", "true");
+  if (!connectionUrl.searchParams.has("sslmode")) {
+    connectionUrl.searchParams.set("sslmode", "require");
+  }
+} else if (!connectionUrl.searchParams.has("sslmode")) {
+  connectionUrl.searchParams.set("sslmode", "verify-full");
+}
+
+const connectionString = connectionUrl.toString();
 
 const adapter = new PrismaPg({ connectionString });
 const prisma = new PrismaClient({ adapter });
