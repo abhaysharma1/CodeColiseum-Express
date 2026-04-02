@@ -35,7 +35,8 @@ RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nodeuser
 
 # Copy necessary files from builder stage
-COPY --from=deps --chown=nodeuser:nodejs /app/node_modules ./node_modules
+# COPY --from=deps --chown=nodeuser:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=nodeuser:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nodeuser:nodejs /app/dist ./dist
 COPY --from=builder --chown=nodeuser:nodejs /app/generated ./generated
 COPY --from=builder --chown=nodeuser:nodejs /app/prisma ./prisma

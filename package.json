@@ -28,12 +28,12 @@
     "@types/pg": "^8.16.0",
     "eslint": "^10.0.0",
     "jest": "^30.2.0",
-    "prisma": "^7.4.0",
+    "prisma": "^7.6.0",
     "ts-jest": "^29.4.6",
     "ts-node-dev": "^2.0.0",
-    "tsx": "^4.20.5",
     "tsc-alias": "^1.8.16",
     "tsconfig-paths": "^4.2.0",
+    "tsx": "^4.20.5",
     "typescript": "^5.9.3"
   },
   "dependencies": {
