@@ -12,7 +12,7 @@
     "test": "jest",
     "lint": "eslint . --ext .ts",
     "docker:build": "docker build -t codecoliseum-express .",
-    "prisma:migrate": "prisma migrate deploy"
+    "prisma:migrate": "prisma migrate deploy --config=prisma.config.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
