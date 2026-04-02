@@ -148,7 +148,7 @@ const judgeLanguageIdByEnum: Record<ProgrammingLanguage, number> = {
   javascript: 63,
 };
 
-const normalizeLanguage = (languageId?: number): ProgrammingLanguage =>
+const normalizeProgrammingLanguage = (languageId?: number): ProgrammingLanguage =>
   languageIdToEnum[languageId ?? -1] ?? "cpp";
 
 const toJudgeLanguageId = (language: ProgrammingLanguage): number =>
@@ -373,7 +373,7 @@ export const uploadDriverCode = async (req: Request, res: Response) => {
     }
 
     const { problemId, languageId, header, template, footer } = validation.data;
-    const language = normalizeLanguage(languageId);
+    const language = normalizeProgrammingLanguage(languageId);
 
     const problem = await prisma.problem.findUnique({
       where: { id: problemId },
@@ -562,7 +562,7 @@ export const uploadProblems = async (req: Request, res: Response) => {
           await tx.referenceSolution.create({
             data: {
               problemId: problem.id,
-              language: normalizeLanguage(p.referenceSolution.languageId),
+              language: normalizeProgrammingLanguage(p.referenceSolution.languageId),
               code: p.referenceSolution.code,
             },
           });

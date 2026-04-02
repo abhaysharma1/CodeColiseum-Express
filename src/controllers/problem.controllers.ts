@@ -21,6 +21,21 @@ const languageIdToEnum: Record<number, ProgrammingLanguage> = {
 const normalizeLanguage = (languageId?: number): ProgrammingLanguage =>
   languageIdToEnum[languageId ?? -1] ?? "cpp";
 
+const resolveJudge0LanguageId = (languageId?: unknown): number => {
+  if (typeof languageId === "number" && Number.isFinite(languageId)) {
+    return languageId;
+  }
+
+  if (typeof languageId === "string") {
+    const parsed = Number(languageId);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return 54;
+};
+
 export const getProblems = async (
   req: Request,
   res: Response,
