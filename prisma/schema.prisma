@@ -138,10 +138,10 @@ enum problemDifficulty {
 }
 
 enum ProgrammingLanguage {
+  c
   cpp
   python
   java
-  javascript
 }
 
 model TestCase {
@@ -169,11 +169,11 @@ model complexityTestingCases {
 }
 
 model driverCode {
-  id         String  @id @default(uuid())
-  language   ProgrammingLanguage
-  header     String?
-  template   String?
-  footer     String?
+  id       String              @id @default(uuid())
+  language ProgrammingLanguage
+  header   String?
+  template String?
+  footer   String?
 
   problem   Problem  @relation(fields: [problemId], references: [id], onDelete: Cascade)
   problemId String
@@ -185,11 +185,11 @@ model driverCode {
 }
 
 model referenceSolution {
-  id         String  @id @default(uuid())
-  language   ProgrammingLanguage
-  code       String
-  problemId  String
-  problem    Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  id        String              @id @default(uuid())
+  language  ProgrammingLanguage
+  code      String
+  problemId String
+  problem   Problem             @relation(fields: [problemId], references: [id], onDelete: Cascade)
 }
 
 model RunTestCase {
@@ -204,13 +204,21 @@ model RunTestCase {
 }
 
 model selfSubmission {
-  id              String           @id @default(uuid())
-  code            String
-  language        String
-  noOfPassedCases Int
-  failedCase      Json?
-  createdAt       DateTime         @default(now())
-  status          submissionStatus
+  id String @id @default(uuid())
+
+  sourceCode String
+  language   String
+
+  passedTestcases Int    @default(0)
+  totalTestcases  Int    @default(0)
+  executionTime   Float?
+  memory          Float?
+
+  stderr          String?
+
+  createdAt DateTime @default(now())
+
+  status ExecutionStatus
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId String
@@ -219,12 +227,6 @@ model selfSubmission {
   problemId String
 
   @@index([userId])
-}
-
-enum submissionStatus {
-  ACCEPTED
-  BAD_SCALING
-  BAD_ALGORITHM
 }
 
 model ProblemTestGenerator {
@@ -329,17 +331,18 @@ model Submission {
   language   String
   sourceCode String
 
-  passedTestcases Int    @default(0)
-  totalTestcases  Int    @default(0)
+  passedTestcases Int     @default(0)
+  totalTestcases  Int     @default(0)
   executionTime   Float?
   memory          Float?
+  stderr          String?
 
   isFinal  Boolean @default(false)
   aiQueued Boolean @default(false)
 
   // ✅ ADD THIS
   aiStatus AiProcessingStatus @default(PENDING)
-  status   SubmissionStatus
+  status   ExecutionStatus
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -362,7 +365,7 @@ enum AiProcessingStatus {
   FAILED
 }
 
-enum SubmissionStatus {
+enum ExecutionStatus {
   PENDING // Accepted by backend, not yet sent to judge
   RUNNING // Being executed by Judge0
   ACCEPTED // All test cases passed
@@ -373,6 +376,7 @@ enum SubmissionStatus {
   RUNTIME_ERROR
   COMPILE_ERROR
   INTERNAL_ERROR // Judge failure / unexpected error
+  BAD_SCALING
 }
 
 model ExamResult {

@@ -3,7 +3,10 @@ import prisma from "../utils/prisma";
 import { auth } from "../utils/auth";
 import { fromNodeHeaders } from "better-auth/node";
 import axios from "axios";
-import { ProgrammingLanguage } from "../../generated/prisma/enums";
+import {
+  fromRuntimeLanguageId,
+  toRuntimeLanguageId,
+} from "@/utils/languageCatalog";
 
 /* ----------------------------- Types ----------------------------- */
 
@@ -60,18 +63,16 @@ const reconstructJudge0Response = (raw: Judge0Raw): JudgeResponse => ({
   message: decodeBase64(raw.message),
 });
 
-const languageIdToEnum: Record<number, ProgrammingLanguage> = {
-  54: "cpp",
-  71: "python",
-  62: "java",
-  63: "javascript",
+const normalizeLanguage = (languageId?: number) => fromRuntimeLanguageId(languageId);
+
+const normalizeJudgeLanguageId = (languageId?: number) => {
+  const language = fromRuntimeLanguageId(languageId);
+  if (!language) {
+    return null;
+  }
+
+  return toRuntimeLanguageId(language);
 };
-
-const normalizeLanguage = (languageId?: number): ProgrammingLanguage =>
-  languageIdToEnum[languageId ?? -1] ?? "cpp";
-
-const normalizeJudgeLanguageId = (languageId?: number): number =>
-  languageIdToEnum[languageId ?? -1] ? (languageId as number) : 54;
 
 export function sanitizeSourceCode(code: string): string {
   return (
@@ -113,6 +114,12 @@ export async function runCodeService(
 ): Promise<RunCodeResponse> {
   const normalizedLanguage = normalizeLanguage(languageId);
   const judgeLanguageId = normalizeJudgeLanguageId(languageId);
+
+  if (!normalizedLanguage || !judgeLanguageId) {
+    const error = new Error("Unsupported language");
+    (error as any).status = 400;
+    throw error;
+  }
 
   const session = await auth.api.getSession({
     headers: fromNodeHeaders(req.headers),

@@ -7,6 +7,7 @@ import {
   SEBError,
 } from "../utils/exam.utils";
 import {
+  getExamSubmissionStatusService,
   submitCodeService,
   SubmitCodeRequest,
 } from "../services/codeSubmission.service";
@@ -283,6 +284,20 @@ export const submitCode = async (
     };
 
     const result = await submitCodeService(req, requestData);
+    res.status(202).json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getSubmissionStatus = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { submissionId } = req.params;
+    const result = await getExamSubmissionStatusService(req, submissionId);
     res.status(200).json(result);
   } catch (error) {
     next(error);
@@ -328,6 +343,19 @@ export const submitTest = async (
         examId: examDetails.id,
       },
     });
+
+    const hasPendingSubmission = submissions.some(
+      (submission) =>
+        submission.status === "PENDING" || submission.status === "RUNNING",
+    );
+
+    if (hasPendingSubmission) {
+      const error = new Error(
+        "Please wait for all code submissions to finish before final exam submission",
+      );
+      (error as any).status = 409;
+      return next(error);
+    }
 
     // Calculate scores per problem (take the maximum score for each problem)
     const scoreMap = new Map<string, number>();

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   getProblemDescription,
+  getSubmissionStatus,
   getSubmissions,
   getTestCases,
   getExamDetails,
@@ -17,6 +18,7 @@ const router = Router();
 // GET routes
 router.get("/problem-description", getProblemDescription);
 router.get("/submissions", getSubmissions);
+router.get("/submission-status/:submissionId", getSubmissionStatus);
 router.get("/test-cases", getTestCases);
 router.get("/exam-details", getExamDetails);
 

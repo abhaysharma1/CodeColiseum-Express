@@ -12,6 +12,13 @@ import { auth } from "@/utils/auth";
 import axios from "axios";
 import { hashPassword } from "better-auth/crypto";
 import { GLOBAL_ROLE_IDS } from "@/permissions/role.constants";
+import {
+  isSupportedLanguageKey,
+  resolveLanguageId,
+  resolveLanguageFromInput,
+  supportedLanguageKeys,
+  toRuntimeLanguageId,
+} from "@/utils/languageCatalog";
 
 // Types
 interface JudgeStatus {
@@ -55,76 +62,20 @@ const decodeBase64 = (value?: string | null): string | null => {
   }
 };
 
-const supportedLanguages = ["cpp", "python", "java", "javascript"] as const;
-type SupportedLanguage = (typeof supportedLanguages)[number];
+const languageSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .refine((value) => isSupportedLanguageKey(value), {
+    message: "Unsupported language",
+  });
 
-const judge0LanguageByKey: Record<SupportedLanguage, number> = {
-  cpp: 54,
-  python: 71,
-  java: 62,
-  javascript: 63,
-};
-
-const languageByJudge0Id: Record<number, SupportedLanguage> = {
-  54: "cpp",
-  71: "python",
-  62: "java",
-  63: "javascript",
-};
-
-const normalizeLanguage = (value?: unknown): SupportedLanguage => {
-  if (typeof value !== "string") {
-    return "cpp";
-  }
-
-  const normalized = value.toLowerCase().trim();
-  if ((supportedLanguages as readonly string[]).includes(normalized)) {
-    return normalized as SupportedLanguage;
-  }
-
-  return "cpp";
-};
-
-const resolveLanguageFromInput = (input: {
-  language?: unknown;
-  languageId?: unknown;
-}): SupportedLanguage => {
-  if (typeof input.language === "string") {
-    return normalizeLanguage(input.language);
-  }
-
-  if (typeof input.languageId === "number") {
-    return languageByJudge0Id[input.languageId] ?? "cpp";
-  }
-
-  if (typeof input.languageId === "string") {
-    const parsed = Number(input.languageId);
-    if (Number.isFinite(parsed)) {
-      return languageByJudge0Id[parsed] ?? "cpp";
-    }
-  }
-
-  return "cpp";
-};
-
-const resolveJudge0LanguageId = (input: {
-  language?: unknown;
-  languageId?: unknown;
-}): number => {
-  if (typeof input.languageId === "number" && Number.isFinite(input.languageId)) {
-    return input.languageId;
-  }
-
-  if (typeof input.languageId === "string") {
-    const parsed = Number(input.languageId);
-    if (Number.isFinite(parsed)) {
-      return parsed;
-    }
-  }
-
-  const language = resolveLanguageFromInput(input);
-  return judge0LanguageByKey[language];
-};
+const defaultDriverCode = Object.fromEntries(
+  supportedLanguageKeys.map((language) => [
+    language,
+    { header: "", template: "", footer: "" },
+  ]),
+) as Record<string, { header: string; template: string; footer: string }>;
 
 const reconstructJudge0Response = (raw: Judge0Raw): JudgeResponse => ({
   ...raw,
@@ -134,25 +85,24 @@ const reconstructJudge0Response = (raw: Judge0Raw): JudgeResponse => ({
   message: decodeBase64(raw.message),
 });
 
-const languageIdToEnum: Record<number, ProgrammingLanguage> = {
-  54: "cpp",
-  71: "python",
-  62: "java",
-  63: "javascript",
+const isProgrammingLanguage = (value: string): value is ProgrammingLanguage =>
+  (Object.values(ProgrammingLanguage) as string[]).includes(value);
+
+const normalizeProgrammingLanguage = (input: {
+  language?: unknown;
+  languageId?: unknown;
+}): ProgrammingLanguage | null => {
+  const resolved = resolveLanguageFromInput(input);
+
+  if (!resolved) {
+    return null;
+  }
+
+  return isProgrammingLanguage(resolved) ? resolved : null;
 };
 
-const judgeLanguageIdByEnum: Record<ProgrammingLanguage, number> = {
-  cpp: 54,
-  python: 71,
-  java: 62,
-  javascript: 63,
-};
-
-const normalizeProgrammingLanguage = (languageId?: number): ProgrammingLanguage =>
-  languageIdToEnum[languageId ?? -1] ?? "cpp";
-
-const toJudgeLanguageId = (language: ProgrammingLanguage): number =>
-  judgeLanguageIdByEnum[language] ?? 54;
+const toJudgeLanguageId = (language: ProgrammingLanguage): number | null =>
+  toRuntimeLanguageId(language as any);
 
 // Validation schemas
 const complexityCasesSchema = z.object({
@@ -168,7 +118,7 @@ const complexityCasesSchema = z.object({
 
 const driverCodeSchema = z.object({
   problemId: z.string(),
-  language: z.enum(supportedLanguages).optional(),
+  language: languageSchema.optional(),
   languageId: z.number().int().optional(),
   header: z.string().optional(),
   template: z.string().optional(),
@@ -201,7 +151,7 @@ const problemSchema = z.object({
   publicTests: z.array(testSchema).optional().default([]),
   hiddenTests: z.array(testSchema).optional().default([]),
   referenceSolution: z.object({
-    language: z.enum(supportedLanguages).optional(),
+    language: languageSchema.optional(),
     languageId: z.number().int().optional(),
     code: z.string(),
   }),
@@ -231,22 +181,17 @@ const problemEditorSchema = z.object({
       output: z.string()
     })).default([]),
   }),
-  driverCode: z.partialRecord(
-    z.enum(["cpp", "python", "java", "javascript"]),
+  driverCode: z.record(
+    z.string(),
     z.object({
       header: z.string().optional().default(""),
       template: z.string().optional().default(""),
       footer: z.string().optional().default(""),
-    })
-  ).default({
-    cpp: { header: "", template: "", footer: "" },
-    python: { header: "", template: "", footer: "" },
-    java: { header: "", template: "", footer: "" },
-    javascript: { header: "", template: "", footer: "" },
-  }),
+    }),
+  ).default(defaultDriverCode),
   solutions: z.array(z.object({
     id: z.string(),
-    language: z.enum(["cpp", "python", "java", "javascript"]),
+    language: languageSchema,
     code: z.string()
   })).default([]),
   status: z.enum(["DRAFT", "PUBLISHED"]).default("DRAFT")
@@ -372,8 +317,12 @@ export const uploadDriverCode = async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Validation Failed" });
     }
 
-    const { problemId, languageId, header, template, footer } = validation.data;
-    const language = normalizeProgrammingLanguage(languageId);
+    const { problemId, language, languageId, header, template, footer } = validation.data;
+    const resolvedLanguage = normalizeProgrammingLanguage({ language, languageId });
+
+    if (!resolvedLanguage) {
+      return res.status(400).json({ error: "Unsupported language" });
+    }
 
     const problem = await prisma.problem.findUnique({
       where: { id: problemId },
@@ -386,14 +335,14 @@ export const uploadDriverCode = async (req: Request, res: Response) => {
     // Delete existing driver code
     await prisma.driverCode.deleteMany({
       where: {
-        language,
+        language: resolvedLanguage,
         problemId,
       },
     });
 
     const newCode = await prisma.driverCode.create({
       data: {
-        language,
+        language: resolvedLanguage,
         header,
         template,
         footer,
@@ -559,10 +508,19 @@ export const uploadProblems = async (req: Request, res: Response) => {
             },
           });
 
+          const refLanguage = normalizeProgrammingLanguage({
+            language: p.referenceSolution.language,
+            languageId: p.referenceSolution.languageId,
+          });
+
+          if (!refLanguage) {
+            throw new Error("Unsupported reference solution language");
+          }
+
           await tx.referenceSolution.create({
             data: {
               problemId: problem.id,
-              language: normalizeProgrammingLanguage(p.referenceSolution.languageId),
+              language: refLanguage,
               code: p.referenceSolution.code,
             },
           });
@@ -623,8 +581,14 @@ export const validateComplexityCases = async (req: Request, res: Response) => {
 
     for (let i = 0; i < cases.length; i++) {
       try {
+        const judgeLanguageId = toJudgeLanguageId(refCode.language);
+
+        if (!judgeLanguageId) {
+          return res.status(400).json({ error: "Unsupported language" });
+        }
+
         const submission = {
-          language_id: toJudgeLanguageId(refCode.language),
+          language_id: judgeLanguageId,
           source_code: encodeBase64(refCode.code),
           stdin: encodeBase64(cases[i].input),
           expected_output: encodeBase64(cases[i].output),
@@ -719,11 +683,17 @@ export const validateProblem = async (req: Request, res: Response) => {
     const cases = JSON.parse(JSON.stringify(testCasesBefore));
     const code = firstProblem.referenceSolution.code;
 
+    const judgeLanguageId = resolveLanguageId({
+      language: firstProblem.referenceSolution.language,
+      languageId: firstProblem.referenceSolution.languageId,
+    });
+
+    if (!judgeLanguageId) {
+      return res.status(400).json({ error: "Unsupported language" });
+    }
+
     const submissions = cases.map((item: any) => ({
-      language_id: resolveJudge0LanguageId({
-        language: firstProblem.referenceSolution.language,
-        languageId: firstProblem.referenceSolution.languageId,
-      }),
+      language_id: judgeLanguageId,
       source_code: encodeBase64(code),
       stdin: encodeBase64(item.input),
       expected_output: encodeBase64(item.output),

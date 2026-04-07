@@ -3,38 +3,17 @@ import { NextFunction, Request, Response } from "express";
 import { auth } from "../utils/auth";
 import { fromNodeHeaders } from "better-auth/node";
 import { runCodeService, RunCodeRequest } from "../services/codeRunner.service";
-import { ProgrammingLanguage } from "../../generated/prisma/enums";
 import {
+  getPracticeSubmissionStatusService,
   submitCodeService,
   SubmitCodeRequest,
 } from "../services/problemSubmission.service";
 import { enqueuePracticeAIReview } from "@/services/startAiEvaluation.service";
 import { redis } from "@/config/upstashRedis.config";
-
-const languageIdToEnum: Record<number, ProgrammingLanguage> = {
-  54: "cpp",
-  71: "python",
-  62: "java",
-  63: "javascript",
-};
-
-const normalizeLanguage = (languageId?: number): ProgrammingLanguage =>
-  languageIdToEnum[languageId ?? -1] ?? "cpp";
-
-const resolveJudge0LanguageId = (languageId?: unknown): number => {
-  if (typeof languageId === "number" && Number.isFinite(languageId)) {
-    return languageId;
-  }
-
-  if (typeof languageId === "string") {
-    const parsed = Number(languageId);
-    if (Number.isFinite(parsed)) {
-      return parsed;
-    }
-  }
-
-  return 54;
-};
+import {
+  resolveLanguageId,
+  resolveLanguageFromInput,
+} from "@/utils/languageCatalog";
 
 export const getProblems = async (
   req: Request,
@@ -212,11 +191,17 @@ export const getTemplateCode = async (
   next: NextFunction,
 ) => {
   try {
-    const { problemId, languageId } = req.body;
-    const language = normalizeLanguage(Number(languageId));
+    const { problemId, language, languageId } = req.body;
+    const resolvedLanguage = resolveLanguageFromInput({ language, languageId });
 
     if (!problemId) {
       const error = new Error("problemId is required");
+      (error as any).status = 400;
+      return next(error);
+    }
+
+    if (!resolvedLanguage) {
+      const error = new Error("Unsupported language");
       (error as any).status = 400;
       return next(error);
     }
@@ -236,7 +221,7 @@ export const getTemplateCode = async (
     const template = await prisma.driverCode.findUnique({
       where: {
         language_problemId: {
-          language,
+          language: resolvedLanguage,
           problemId: problemId,
         },
       },
@@ -261,11 +246,20 @@ export const runCode = async (
   next: NextFunction,
 ) => {
   try {
-    const { questionId, languageId, code } = req.body;
-    const resolvedLanguageId = resolveJudge0LanguageId(languageId);
+    const { questionId, language, languageId, code } = req.body;
+    const resolvedLanguageId = resolveLanguageId({
+      language,
+      languageId,
+    });
 
     if (!questionId || !code) {
       const error = new Error("questionId and code are required");
+      (error as any).status = 400;
+      return next(error);
+    }
+
+    if (!resolvedLanguageId) {
+      const error = new Error("Unsupported language");
       (error as any).status = 400;
       return next(error);
     }
@@ -290,11 +284,20 @@ export const submitCode = async (
   next: NextFunction,
 ) => {
   try {
-    const { questionId, languageId, code } = req.body;
-    const resolvedLanguageId = resolveJudge0LanguageId(languageId);
+    const { questionId, language, languageId, code } = req.body;
+    const resolvedLanguageId = resolveLanguageId({
+      language,
+      languageId,
+    });
 
     if (!questionId || !code) {
       const error = new Error("questionId and code are required");
+      (error as any).status = 400;
+      return next(error);
+    }
+
+    if (!resolvedLanguageId) {
+      const error = new Error("Unsupported language");
       (error as any).status = 400;
       return next(error);
     }
@@ -306,8 +309,21 @@ export const submitCode = async (
     };
 
     const result = await submitCodeService(req, requestData);
-    const statusCode = result.status === "ACCEPTED" ? 201 : 200;
-    res.status(statusCode).json(result);
+    res.status(202).json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getSubmissionStatus = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { submissionId } = req.params;
+    const result = await getPracticeSubmissionStatusService(req, submissionId);
+    res.status(200).json(result);
   } catch (error) {
     next(error);
   }
