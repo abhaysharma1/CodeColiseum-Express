@@ -39,27 +39,89 @@ interface JudgeResponse {
   expected_output?: string | null;
 }
 
-interface Judge0Raw extends Omit<
-  JudgeResponse,
-  "stdout" | "stderr" | "compile_output" | "message"
-> {
-  stdout: string | null;
-  stderr: string | null;
-  compile_output: string | null;
-  message: string | null;
+interface PistonStage {
+  stdout: string;
+  stderr: string;
+  output: string;
+  code: number | null;
+  signal: string | null;
 }
 
-// Utility functions
-const encodeBase64 = (value?: string | null): string | null =>
-  value ? Buffer.from(value, "utf8").toString("base64") : null;
+interface PistonExecutionResult {
+  language: string;
+  version: string;
+  run: PistonStage;
+  compile?: PistonStage;
+}
 
-const decodeBase64 = (value?: string | null): string | null => {
-  if (!value) return null;
-  try {
-    return Buffer.from(value, "base64").toString("utf8");
-  } catch {
-    return value;
+interface PistonExecuteRequest {
+  language: string;
+  version: string;
+  files: Array<{ content: string }>;
+  stdin: string;
+}
+
+const normalizeOutput = (value?: string | null): string =>
+  (value ?? "").replace(/\r\n/g, "\n").trimEnd();
+
+const toJudgeLikeResponse = (input: {
+  result: PistonExecutionResult;
+  stdin: string;
+  expectedOutput: string;
+}): JudgeResponse => {
+  const { result, stdin, expectedOutput } = input;
+  const compile = result.compile;
+  const run = result.run;
+
+  if (compile && compile.code !== 0) {
+    return {
+      stdout: compile.stdout || null,
+      stderr: compile.stderr || null,
+      compile_output: compile.stderr || compile.output || null,
+      message: compile.signal || null,
+      status: { id: 6, description: "Compilation Error" },
+      time: "0",
+      memory: 0,
+      token: "",
+      stdin,
+      expected_output: expectedOutput,
+    };
   }
+
+  if (run.code !== 0) {
+    return {
+      stdout: run.stdout || null,
+      stderr: run.stderr || null,
+      compile_output: null,
+      message: run.signal || null,
+      status: { id: 11, description: "Runtime Error" },
+      time: "0",
+      memory: 0,
+      token: "",
+      stdin,
+      expected_output: expectedOutput,
+    };
+  }
+
+  const actual = normalizeOutput(run.stdout || run.output || "");
+  const expected = normalizeOutput(expectedOutput);
+  const accepted = actual === expected;
+
+  return {
+    stdout: run.stdout || run.output || null,
+    stderr: run.stderr || null,
+    compile_output: null,
+    message: null,
+    status: {
+      id: accepted ? 3 : 4,
+      description: accepted ? "Accepted" : "Wrong Answer",
+    },
+    time: "0",
+    memory: 0,
+    token: "",
+    stdin,
+    expected_output: expectedOutput,
+  };
 };
 
 const languageSchema = z
@@ -77,14 +139,6 @@ const defaultDriverCode = Object.fromEntries(
   ]),
 ) as Record<string, { header: string; template: string; footer: string }>;
 
-const reconstructJudge0Response = (raw: Judge0Raw): JudgeResponse => ({
-  ...raw,
-  stdout: decodeBase64(raw.stdout),
-  stderr: decodeBase64(raw.stderr),
-  compile_output: decodeBase64(raw.compile_output),
-  message: decodeBase64(raw.message),
-});
-
 const isProgrammingLanguage = (value: string): value is ProgrammingLanguage =>
   (Object.values(ProgrammingLanguage) as string[]).includes(value);
 
@@ -101,8 +155,20 @@ const normalizeProgrammingLanguage = (input: {
   return isProgrammingLanguage(resolved) ? resolved : null;
 };
 
-const toJudgeLanguageId = (language: ProgrammingLanguage): number | null =>
-  toRuntimeLanguageId(language as any);
+const getPistonExecuteUrl = (): string | null => {
+  const rawPistonUri = process.env.PISTON_URI?.trim();
+
+  if (!rawPistonUri) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(rawPistonUri);
+    return `${parsed.toString().replace(/\/$/, "")}/api/v2/execute`;
+  } catch {
+    return null;
+  }
+};
 
 // Validation schemas
 const complexityCasesSchema = z.object({
@@ -576,41 +642,36 @@ export const validateComplexityCases = async (req: Request, res: Response) => {
     const cases = casesData.cases;
     let results: JudgeResponse[] = [];
 
-    const JUDGE0_DOMAIN = process.env.JUDGE0_DOMAIN;
-    const JUDGE0_API_KEY = process.env.JUDGE0_API_KEY;
+    const pistonExecuteUrl = getPistonExecuteUrl();
+    if (!pistonExecuteUrl) {
+      return res.status(500).json({
+        error: "Piston is not configured. Set a valid PISTON_URI",
+      });
+    }
 
     for (let i = 0; i < cases.length; i++) {
       try {
-        const judgeLanguageId = toJudgeLanguageId(refCode.language);
-
-        if (!judgeLanguageId) {
-          return res.status(400).json({ error: "Unsupported language" });
-        }
-
-        const submission = {
-          language_id: judgeLanguageId,
-          source_code: encodeBase64(refCode.code),
-          stdin: encodeBase64(cases[i].input),
-          expected_output: encodeBase64(cases[i].output),
+        const payload: PistonExecuteRequest = {
+          language: refCode.language,
+          version: "*",
+          files: [{ content: refCode.code }],
+          stdin: cases[i].input,
         };
 
-        const response = await axios.post<Judge0Raw>(
-          `${JUDGE0_DOMAIN}/submissions`,
-          submission,
+        const response = await axios.post<PistonExecutionResult>(
+          pistonExecuteUrl,
+          payload,
           {
-            params: {
-              base64_encoded: true,
-              wait: true,
-              fields: "*",
-            },
-            headers: {
-              "X-AUTH_TOKEN": JUDGE0_API_KEY,
-            },
+            headers: { "Content-Type": "application/json" },
+            timeout: 15000,
           },
         );
 
-        const decoded = reconstructJudge0Response(response.data);
-        results[i] = decoded;
+        results[i] = toJudgeLikeResponse({
+          result: response.data,
+          stdin: cases[i].input,
+          expectedOutput: cases[i].output,
+        });
       } catch (error) {
         console.error(error);
         return res
@@ -683,77 +744,53 @@ export const validateProblem = async (req: Request, res: Response) => {
     const cases = JSON.parse(JSON.stringify(testCasesBefore));
     const code = firstProblem.referenceSolution.code;
 
-    const judgeLanguageId = resolveLanguageId({
+    const runtimeLanguageId = resolveLanguageId({
       language: firstProblem.referenceSolution.language,
       languageId: firstProblem.referenceSolution.languageId,
     });
 
-    if (!judgeLanguageId) {
+    const language = normalizeProgrammingLanguage({
+      language: firstProblem.referenceSolution.language,
+      languageId: firstProblem.referenceSolution.languageId,
+    });
+
+    if (!runtimeLanguageId || !language) {
       return res.status(400).json({ error: "Unsupported language" });
     }
 
-    const submissions = cases.map((item: any) => ({
-      language_id: judgeLanguageId,
-      source_code: encodeBase64(code),
-      stdin: encodeBase64(item.input),
-      expected_output: encodeBase64(item.output),
-    }));
+    const pistonExecuteUrl = getPistonExecuteUrl();
+    if (!pistonExecuteUrl) {
+      return res.status(500).json({
+        error: "Piston is not configured. Set a valid PISTON_URI",
+      });
+    }
 
-    const JUDGE0_DOMAIN = process.env.JUDGE0_DOMAIN;
-    const JUDGE0_API_KEY = process.env.JUDGE0_API_KEY;
+    const responses: JudgeResponse[] = [];
+    for (const item of cases as Array<{ input: string; output: string }>) {
+      const payload: PistonExecuteRequest = {
+        language,
+        version: "*",
+        files: [{ content: code }],
+        stdin: item.input,
+      };
 
-    // Submit all test cases
-    const batchResponse = await axios.post(
-      `${JUDGE0_DOMAIN}/submissions/batch`,
-      { submissions },
-      {
-        params: {
-          base64_encoded: true,
-          wait: false,
-          fields: "*",
+      const execution = await axios.post<PistonExecutionResult>(
+        pistonExecuteUrl,
+        payload,
+        {
+          headers: { "Content-Type": "application/json" },
+          timeout: 15000,
         },
-        headers: {
-          "X-AUTH_TOKEN": JUDGE0_API_KEY,
-        },
-      },
-    );
+      );
 
-    const tokens = (batchResponse.data as any[]).map((item: any) => item.token);
-
-    const pollSubmission = async (token: string): Promise<JudgeResponse> => {
-      let attempts = 0;
-      const maxAttempts = 30;
-
-      while (attempts < maxAttempts) {
-        const statusResponse = await axios.get<Judge0Raw>(
-          `${JUDGE0_DOMAIN}/submissions/${token}`,
-          {
-            params: {
-              base64_encoded: true,
-              fields: "*",
-            },
-            headers: {
-              "X-AUTH_TOKEN": JUDGE0_API_KEY,
-            },
-          },
-        );
-
-        const result = reconstructJudge0Response(statusResponse.data);
-
-        if (result.status.id > 2) {
-          return result;
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        attempts++;
-      }
-
-      throw new Error(`Submission ${token} timed out`);
-    };
-
-    const responses = await Promise.all(
-      tokens.map((token: string) => pollSubmission(token)),
-    );
+      responses.push(
+        toJudgeLikeResponse({
+          result: execution.data,
+          stdin: item.input,
+          expectedOutput: item.output,
+        }),
+      );
+    }
 
     res.status(200).json({ responses, cases });
   } catch (error) {

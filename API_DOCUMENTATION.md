@@ -162,16 +162,21 @@ There are two styles of errors in code:
 {
   "responses": [
     {
-      "stdout": "...",
-      "stderr": null,
-      "compile_output": null,
-      "message": null,
-      "time": "0.01",
-      "memory": 1234,
-      "token": "judge0_token",
-      "status": {
-        "id": 3,
-        "description": "Accepted"
+      "language": "python",
+      "version": "3.12.0",
+      "run": {
+        "stdout": "...",
+        "stderr": "",
+        "output": "...",
+        "code": 0,
+        "signal": null
+      },
+      "compile": {
+        "stdout": "",
+        "stderr": "",
+        "output": "",
+        "code": 0,
+        "signal": null
       }
     }
   ],
@@ -983,7 +988,8 @@ All endpoints require Admin role.
 
 - Many list endpoints support `take` and `skip` pagination.
 - Some query names are case/style-sensitive in current implementation (example: `searchvalue` for `/teacher/exam/fetchallexams`).
-- Exam code submission and practice submission both integrate Judge0 and may fail if `JUDGE0_DOMAIN` or `JUDGE0_API_KEY` are missing.
+- Practice run-code (`/problems/runcode`) executes synchronously through Piston and requires `PISTON_URI`.
+- Exam code submission and practice submit-code paths integrate Judge0 and may fail if `JUDGE0_DOMAIN` or `JUDGE0_API_KEY` are missing.
 - Exam routes can enforce Safe Exam Browser when `sebEnabled = true` via `x-safeexambrowser-configkeyhash`.
 - AI endpoints depend on group AI settings, exam state, and Cloud Tasks/SQS worker pipeline.
 
