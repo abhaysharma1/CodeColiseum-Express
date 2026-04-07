@@ -1,5 +1,3 @@
-import languages from "@/config/languages.json";
-
 type LanguageCatalogEntry = {
   key: string;
   label: string;
@@ -7,9 +5,11 @@ type LanguageCatalogEntry = {
   runtimeId: number;
 };
 
+const languages = require("../config/languages.json") as LanguageCatalogEntry[];
+
 export type LanguageKey = "c" | "cpp" | "python" | "java";
 
-const catalog = (languages as LanguageCatalogEntry[]).map((item) => ({
+const catalog = languages.map((item) => ({
   ...item,
   key: item.key.toLowerCase().trim(),
   monaco: item.monaco.toLowerCase().trim(),

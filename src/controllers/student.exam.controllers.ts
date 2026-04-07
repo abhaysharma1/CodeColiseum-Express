@@ -296,7 +296,17 @@ export const getSubmissionStatus = async (
   next: NextFunction,
 ) => {
   try {
-    const { submissionId } = req.params;
+    const rawSubmissionId = req.params.submissionId;
+    const submissionId = Array.isArray(rawSubmissionId)
+      ? rawSubmissionId[0]
+      : rawSubmissionId;
+
+    if (!submissionId) {
+      const error = new Error("submissionId is required");
+      (error as any).status = 400;
+      return next(error);
+    }
+
     const result = await getExamSubmissionStatusService(req, submissionId);
     res.status(200).json(result);
   } catch (error) {

@@ -9,7 +9,6 @@ import {
   SubmitCodeRequest,
 } from "../services/problemSubmission.service";
 import { enqueuePracticeAIReview } from "@/services/startAiEvaluation.service";
-import { redis } from "@/config/upstashRedis.config";
 import {
   resolveLanguageId,
   resolveLanguageFromInput,
@@ -170,8 +169,8 @@ export const getSubmissions = async (
         id: true,
         language: true,
         createdAt: true,
-        noOfPassedCases: true,
-        code: true,
+        passedTestcases: true,
+        sourceCode: true,
       },
       orderBy: {
         createdAt: "desc",
@@ -321,7 +320,17 @@ export const getSubmissionStatus = async (
   next: NextFunction,
 ) => {
   try {
-    const { submissionId } = req.params;
+    const rawSubmissionId = req.params.submissionId;
+    const submissionId = Array.isArray(rawSubmissionId)
+      ? rawSubmissionId[0]
+      : rawSubmissionId;
+
+    if (!submissionId) {
+      const error = new Error("submissionId is required");
+      (error as any).status = 400;
+      return next(error);
+    }
+
     const result = await getPracticeSubmissionStatusService(req, submissionId);
     res.status(200).json(result);
   } catch (error) {
