@@ -48,6 +48,9 @@ interface PistonLanguageConfig {
   version: string;
 }
 
+const CASE_START_MARKER = "__CASE_START__";
+const CASE_END_MARKER = "__CASE_END__";
+
 const pistonLanguageMap: Record<LanguageKey, PistonLanguageConfig> = {
   c: { language: "c", version: "*" },
   cpp: { language: "cpp", version: "*" },
@@ -78,6 +81,42 @@ const getPistonExecuteUrl = (): string => {
   }
 
   return `${pistonUri.replace(/\/+$/, "")}/api/v2/execute`;
+};
+
+const extractMarkedBlocks = (content: string): string[] => {
+  const pattern = new RegExp(
+    `${CASE_START_MARKER}[\\s\\S]*?${CASE_END_MARKER}`,
+    "g",
+  );
+  return (content.match(pattern) ?? []).map((block) => block.trim());
+};
+
+const buildAggregatedInput = (cases: TestCase[]): string => {
+  let totalCaseCount = 0;
+  const bodyParts: string[] = [];
+
+  for (const testCase of cases) {
+    const input = (testCase.input ?? "").trim();
+    const newlineIndex = input.indexOf("\n");
+    const head = newlineIndex === -1 ? input : input.slice(0, newlineIndex);
+    const body = newlineIndex === -1 ? "" : input.slice(newlineIndex + 1).trim();
+    const count = Number.parseInt(head.trim(), 10);
+
+    if (!Number.isFinite(count) || count < 0) {
+      return cases.map((entry) => (entry.input ?? "").trim()).join("\n");
+    }
+
+    totalCaseCount += count;
+    if (body) {
+      bodyParts.push(body);
+    }
+  }
+
+  if (totalCaseCount === 0) {
+    return "0";
+  }
+
+  return `${totalCaseCount}\n${bodyParts.join("\n")}`.trim();
 };
 
 export function sanitizeSourceCode(code: string): string {
@@ -198,44 +237,77 @@ export async function runCodeService(
   );
 
   const pistonExecuteUrl = getPistonExecuteUrl();
-  const responses: PistonExecutionResult[] = [];
+  const payload: PistonExecuteRequest = {
+    language: pistonLanguage.language,
+    version: pistonLanguage.version,
+    files: [{ content: finalCode }],
+    stdin: buildAggregatedInput(cases),
+  };
 
-  for (const testCase of cases) {
-    const payload: PistonExecuteRequest = {
-      language: pistonLanguage.language,
-      version: pistonLanguage.version,
-      files: [{ content: finalCode }],
-      stdin: testCase.input,
-    };
+  let execution: PistonExecutionResult;
 
-    try {
-      const execution = await piston.post<PistonExecutionResult>(
-        pistonExecuteUrl,
-        payload,
-        {
-          headers: {
-            "Content-Type": "application/json",
-          },
-          timeout: 15000,
+  try {
+    const result = await piston.post<PistonExecutionResult>(
+      pistonExecuteUrl,
+      payload,
+      {
+        headers: {
+          "Content-Type": "application/json",
         },
+        timeout: 30000,
+      },
+    );
+
+    execution = result.data;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const details =
+        typeof error.response?.data === "string"
+          ? error.response.data
+          : JSON.stringify(error.response?.data ?? {});
+      const executeError = new Error(
+        `Piston execution failed: ${error.message}. ${details}`,
       );
-
-      responses.push(execution.data);
-    } catch (error) {
-      if (axios.isAxiosError(error)) {
-        const details =
-          typeof error.response?.data === "string"
-            ? error.response.data
-            : JSON.stringify(error.response?.data ?? {});
-        const executeError = new Error(
-          `Piston execution failed: ${error.message}. ${details}`,
-        );
-        (executeError as any).status = 502;
-        throw executeError;
-      }
-
-      throw error;
+      (executeError as any).status = 502;
+      throw executeError;
     }
+
+    throw error;
+  }
+
+  const allBlocks = extractMarkedBlocks(execution.run.stdout ?? "");
+  const expectedBlockCounts = cases.map(
+    (testCase) => extractMarkedBlocks(testCase.output ?? "").length,
+  );
+  const expectedTotalBlocks = expectedBlockCounts.reduce(
+    (sum, count) => sum + count,
+    0,
+  );
+
+  if (expectedTotalBlocks !== allBlocks.length) {
+    const error = new Error(
+      `Execution output format mismatch: expected ${expectedTotalBlocks} case blocks, received ${allBlocks.length}`,
+    );
+    (error as any).status = 502;
+    throw error;
+  }
+
+  const responses: PistonExecutionResult[] = [];
+  let offset = 0;
+
+  for (let i = 0; i < cases.length; i++) {
+    const blockCount = expectedBlockCounts[i];
+    const caseBlocks = allBlocks.slice(offset, offset + blockCount).join("\n");
+    offset += blockCount;
+
+    responses.push({
+      ...execution,
+      run: {
+        ...execution.run,
+        stdout: caseBlocks,
+        output: caseBlocks,
+      },
+    });
   }
 
   return { responses, cases };
