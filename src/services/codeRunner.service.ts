@@ -3,10 +3,12 @@ import prisma from "../utils/prisma";
 import { auth } from "../utils/auth";
 import { fromNodeHeaders } from "better-auth/node";
 import axios from "axios";
+import http from "node:http";
 import {
   fromRuntimeLanguageId,
   type LanguageKey,
 } from "@/utils/languageCatalog";
+import CacheableLookup from "cacheable-lookup";
 
 /* ----------------------------- Types ----------------------------- */
 
@@ -53,7 +55,8 @@ const pistonLanguageMap: Record<LanguageKey, PistonLanguageConfig> = {
   java: { language: "java", version: "*" },
 };
 
-const normalizeLanguage = (languageId?: number) => fromRuntimeLanguageId(languageId);
+const normalizeLanguage = (languageId?: number) =>
+  fromRuntimeLanguageId(languageId);
 
 const resolvePistonLanguage = (
   language?: LanguageKey | null,
@@ -110,6 +113,22 @@ export interface RunCodeResponse {
 }
 
 /* ----------------------------- Service ----------------------------- */
+
+const cacheable = new CacheableLookup();
+
+const httpAgent = new http.Agent({
+  keepAlive: true,
+  maxSockets: 100,
+  keepAliveMsecs: 1000,
+});
+
+cacheable.install(httpAgent);
+
+export const piston = axios.create({
+  baseURL: process.env.PISTON_URL || "http://piston.internal:2000",
+  httpAgent,
+  timeout: 10000,
+});
 
 export async function runCodeService(
   req: Request,
@@ -190,7 +209,7 @@ export async function runCodeService(
     };
 
     try {
-      const execution = await axios.post<PistonExecutionResult>(
+      const execution = await piston.post<PistonExecutionResult>(
         pistonExecuteUrl,
         payload,
         {
