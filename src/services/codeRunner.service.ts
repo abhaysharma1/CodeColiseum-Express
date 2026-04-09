@@ -91,6 +91,62 @@ const extractMarkedBlocks = (content: string): string[] => {
   return (content.match(pattern) ?? []).map((block) => block.trim());
 };
 
+const stripBlockMarkers = (block: string): string =>
+  block
+    .replace(CASE_START_MARKER, "")
+    .replace(CASE_END_MARKER, "")
+    .trim();
+
+const parseCaseCountFromInput = (input: string): number | null => {
+  const firstLine = (input ?? "").trim().split("\n")[0]?.trim();
+
+  if (!firstLine) {
+    return null;
+  }
+
+  const count = Number.parseInt(firstLine, 10);
+  if (!Number.isFinite(count) || count <= 0) {
+    return null;
+  }
+
+  return count;
+};
+
+const splitPlainLines = (content: string): string[] => {
+  const normalized = (content ?? "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .trim();
+
+  if (!normalized) {
+    return [];
+  }
+
+  return normalized.split("\n").map((line) => line.trim());
+};
+
+const getOutputBlocks = (
+  content: string,
+  expectedLineCount?: number | null,
+): string[] => {
+  const markedBlocks = extractMarkedBlocks(content);
+
+  if (markedBlocks.length > 0) {
+    return markedBlocks.map(stripBlockMarkers);
+  }
+
+  const lines = splitPlainLines(content);
+  if (
+    expectedLineCount &&
+    expectedLineCount > 1 &&
+    lines.length === expectedLineCount
+  ) {
+    return lines;
+  }
+
+  return [lines.join("\n")];
+};
+
 const buildAggregatedInput = (cases: TestCase[]): string => {
   let totalCaseCount = 0;
   const bodyParts: string[] = [];
@@ -275,13 +331,35 @@ export async function runCodeService(
     throw error;
   }
 
-  const allBlocks = extractMarkedBlocks(execution.run.stdout ?? "");
-  const expectedBlockCounts = cases.map(
-    (testCase) => extractMarkedBlocks(testCase.output ?? "").length,
+  const expectedLineCountHints =
+    cases.length === 1
+      ? [parseCaseCountFromInput(cases[0]?.input ?? "")]
+      : cases.map(() => null);
+
+  const expectedBlocksByCase = cases.map((testCase, index) =>
+    getOutputBlocks(testCase.output ?? "", expectedLineCountHints[index]),
+  );
+
+  const normalizedCases = cases.map((testCase, index) => {
+    const blocks = expectedBlocksByCase[index];
+
+    return {
+      ...testCase,
+      output: blocks.join("\n"),
+    };
+  });
+
+  const expectedBlockCounts = expectedBlocksByCase.map((blocks) =>
+    Math.max(blocks.length, 1),
   );
   const expectedTotalBlocks = expectedBlockCounts.reduce(
     (sum, count) => sum + count,
     0,
+  );
+
+  const allBlocks = getOutputBlocks(
+    execution.run.stdout ?? "",
+    expectedTotalBlocks,
   );
 
   if (expectedTotalBlocks !== allBlocks.length) {
@@ -310,5 +388,5 @@ export async function runCodeService(
     });
   }
 
-  return { responses, cases };
+  return { responses, cases: normalizedCases };
 }
