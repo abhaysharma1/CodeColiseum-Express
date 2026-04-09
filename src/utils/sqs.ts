@@ -28,13 +28,16 @@ function ensureSqsConfigured(queueUrl?: string) {
   }
 }
 
-async function sendSubmissionMessage(queueUrl: string | undefined, submissionId: string) {
+async function sendSubmissionMessage(
+  queueUrl: string | undefined,
+  submissionId: string,
+) {
   ensureSqsConfigured(queueUrl);
 
   await sqsClient.send(
     new SendMessageCommand({
       QueueUrl: queueUrl,
-      MessageBody: JSON.stringify({ submissionId }),
+      MessageBody: JSON.stringify({ selfSubmissionId: submissionId }),
     }),
   );
 }

@@ -14,6 +14,115 @@ import {
   resolveLanguageFromInput,
 } from "@/utils/languageCatalog";
 
+const CASE_START_TOKEN = "_CASE_START_";
+const CASE_END_TOKEN = "_CASE_END_";
+
+type NormalizedTestCase = {
+  input: string;
+  output: string;
+};
+
+const parseDelimitedOutputs = (output: string) => {
+  if (!output.includes(CASE_START_TOKEN) || !output.includes(CASE_END_TOKEN)) {
+    return [];
+  }
+
+  const matches = [...output.matchAll(/_CASE_START_\s*([\s\S]*?)\s*_CASE_END_/g)];
+  return matches
+    .map((match) => (match[1] ?? "").trim())
+    .filter((value) => value !== "");
+};
+
+const splitBundledInput = (input: string, expectedCases: number) => {
+  if (expectedCases <= 1) {
+    return [input.trim()];
+  }
+
+  const lines = input.split(/\r?\n/).map((line) => line.trimEnd());
+  const firstLine = lines[0]?.trim() ?? "";
+  const declaredCount = Number.parseInt(firstLine, 10);
+  const hasLeadingCount =
+    Number.isFinite(declaredCount) && declaredCount === expectedCases;
+
+  const inputLines = hasLeadingCount ? lines.slice(1) : lines;
+  if (inputLines.length === 0) {
+    return Array.from({ length: expectedCases }, () => "");
+  }
+
+  if (inputLines.length % expectedCases === 0) {
+    const linesPerCase = inputLines.length / expectedCases;
+    return Array.from({ length: expectedCases }, (_, index) => {
+      const start = index * linesPerCase;
+      const end = start + linesPerCase;
+      return inputLines.slice(start, end).join("\n").trim();
+    });
+  }
+
+  return Array.from({ length: expectedCases }, (_, index) =>
+    (inputLines[index] ?? "").trim(),
+  );
+};
+
+const normalizeProblemTestCases = (rawCases: unknown): NormalizedTestCase[] => {
+  let parsedCases = rawCases;
+
+  if (typeof parsedCases === "string") {
+    try {
+      parsedCases = JSON.parse(parsedCases);
+    } catch {
+      return [];
+    }
+  }
+
+  const sourceCases = Array.isArray(parsedCases)
+    ? parsedCases
+    : parsedCases && typeof parsedCases === "object"
+      ? [parsedCases]
+      : [];
+
+  const normalized: NormalizedTestCase[] = [];
+
+  for (const caseItem of sourceCases) {
+    if (!caseItem || typeof caseItem !== "object") {
+      continue;
+    }
+
+    const input =
+      typeof (caseItem as { input?: unknown }).input === "string"
+        ? ((caseItem as { input: string }).input ?? "")
+        : "";
+    const output =
+      typeof (caseItem as { output?: unknown }).output === "string"
+        ? ((caseItem as { output: string }).output ?? "")
+        : "";
+
+    if (!input && !output) {
+      continue;
+    }
+
+    const outputBlocks = parseDelimitedOutputs(output);
+    if (outputBlocks.length <= 1) {
+      normalized.push({
+        input: input.trim(),
+        output: output.trim(),
+      });
+      continue;
+    }
+
+    const inputBlocks = splitBundledInput(input, outputBlocks.length);
+    const pairCount = Math.min(inputBlocks.length, outputBlocks.length);
+
+    for (let index = 0; index < pairCount; index += 1) {
+      normalized.push({
+        input: (inputBlocks[index] ?? "").trim(),
+        output: (outputBlocks[index] ?? "").trim(),
+      });
+    }
+  }
+
+  return normalized;
+};
+
 export const getProblems = async (
   req: Request,
   res: Response,
@@ -116,7 +225,12 @@ export const getProblemTestCases = async (
       return next(error);
     }
 
-    res.status(200).json(questionCases);
+    const normalizedCases = normalizeProblemTestCases(questionCases.cases);
+
+    res.status(200).json({
+      ...questionCases,
+      cases: normalizedCases,
+    });
   } catch (error) {
     next(error);
   }
