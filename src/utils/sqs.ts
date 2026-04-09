@@ -30,14 +30,14 @@ function ensureSqsConfigured(queueUrl?: string) {
 
 async function sendSubmissionMessage(
   queueUrl: string | undefined,
-  submissionId: string,
+  payload: Record<string, string>,
 ) {
   ensureSqsConfigured(queueUrl);
 
   await sqsClient.send(
     new SendMessageCommand({
       QueueUrl: queueUrl,
-      MessageBody: JSON.stringify({ selfSubmissionId: submissionId }),
+      MessageBody: JSON.stringify(payload),
     }),
   );
 }
@@ -45,16 +45,20 @@ async function sendSubmissionMessage(
 /**
  * Send single submission to SQS
  */
-export async function sendMessageToSQS(payload: { submissionId: string }) {
-  await sendSubmissionMessage(AI_REVIEW_QUEUE_URL, payload.submissionId);
+export async function sendMessageToSQS(payload: { selfSubmissionId: string }) {
+  await sendSubmissionMessage(AI_REVIEW_QUEUE_URL, {
+    selfSubmissionId: payload.selfSubmissionId,
+  });
 }
 
 export async function sendExamSubmissionToSQS(submissionId: string) {
-  await sendSubmissionMessage(EXAM_EXECUTION_QUEUE_URL, submissionId);
+  await sendSubmissionMessage(EXAM_EXECUTION_QUEUE_URL, { submissionId });
 }
 
 export async function sendPracticeSubmissionToSQS(submissionId: string) {
-  await sendSubmissionMessage(PRACTICE_EXECUTION_QUEUE_URL, submissionId);
+  await sendSubmissionMessage(PRACTICE_EXECUTION_QUEUE_URL, {
+    selfSubmissionId: submissionId,
+  });
 }
 
 /**
