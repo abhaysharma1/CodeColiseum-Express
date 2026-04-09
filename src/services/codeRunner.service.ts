@@ -50,6 +50,8 @@ interface PistonLanguageConfig {
 
 const CASE_START_MARKER = "__CASE_START__";
 const CASE_END_MARKER = "__CASE_END__";
+const ALT_CASE_START_MARKER = "CASE_START_MARKER";
+const ALT_CASE_END_MARKER = "CASE_END_MARKER";
 
 const pistonLanguageMap: Record<LanguageKey, PistonLanguageConfig> = {
   c: { language: "c", version: "*" },
@@ -84,10 +86,17 @@ const getPistonExecuteUrl = (): string => {
 };
 
 const extractMarkedBlocks = (content: string): string[] => {
+  const escapedStarts = [CASE_START_MARKER, ALT_CASE_START_MARKER].map(
+    (marker) => marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+  );
+  const escapedEnds = [CASE_END_MARKER, ALT_CASE_END_MARKER].map((marker) =>
+    marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+  );
   const pattern = new RegExp(
-    `${CASE_START_MARKER}[\\s\\S]*?${CASE_END_MARKER}`,
+    `(?:${escapedStarts.join("|")})[\\s\\S]*?(?:${escapedEnds.join("|")})`,
     "g",
   );
+
   return (content.match(pattern) ?? []).map((block) => block.trim());
 };
 
@@ -95,6 +104,8 @@ const stripBlockMarkers = (block: string): string =>
   block
     .replace(CASE_START_MARKER, "")
     .replace(CASE_END_MARKER, "")
+    .replace(ALT_CASE_START_MARKER, "")
+    .replace(ALT_CASE_END_MARKER, "")
     .trim();
 
 const parseCaseCountFromInput = (input: string): number | null => {
@@ -116,6 +127,10 @@ const splitPlainLines = (content: string): string[] => {
   const normalized = (content ?? "")
     .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n")
+    .replace(new RegExp(`^${ALT_CASE_START_MARKER}$`, "gm"), "")
+    .replace(new RegExp(`^${ALT_CASE_END_MARKER}$`, "gm"), "")
+    .replace(new RegExp(`^${CASE_START_MARKER}$`, "gm"), "")
+    .replace(new RegExp(`^${CASE_END_MARKER}$`, "gm"), "")
     .trim();
 
   if (!normalized) {
@@ -361,29 +376,46 @@ export async function runCodeService(
     execution.run.stdout ?? "",
     expectedTotalBlocks,
   );
+  const reconciledBlocks = [...allBlocks];
 
-  if (expectedTotalBlocks !== allBlocks.length) {
-    const error = new Error(
-      `Execution output format mismatch: expected ${expectedTotalBlocks} case blocks, received ${allBlocks.length}`,
-    );
-    (error as any).status = 502;
-    throw error;
+  if (reconciledBlocks.length === 0) {
+    reconciledBlocks.push((execution.run.stdout ?? "").trim());
+  }
+
+  if (reconciledBlocks.length < expectedTotalBlocks) {
+    while (reconciledBlocks.length < expectedTotalBlocks) {
+      reconciledBlocks.push("");
+    }
+  } else if (reconciledBlocks.length > expectedTotalBlocks) {
+    const head = reconciledBlocks.slice(0, expectedTotalBlocks - 1);
+    const tail = reconciledBlocks.slice(expectedTotalBlocks - 1).join("\n");
+    reconciledBlocks.length = 0;
+    reconciledBlocks.push(...head, tail);
   }
 
   const responses: PistonExecutionResult[] = [];
   let offset = 0;
+  const hasCompileOrRuntimeError =
+    Boolean(execution.compile?.stderr?.trim()) ||
+    Boolean(execution.run.stderr?.trim()) ||
+    (typeof execution.run.code === "number" && execution.run.code !== 0);
 
   for (let i = 0; i < cases.length; i++) {
     const blockCount = expectedBlockCounts[i];
-    const caseBlocks = allBlocks.slice(offset, offset + blockCount).join("\n");
+    const caseBlocks = reconciledBlocks
+      .slice(offset, offset + blockCount)
+      .join("\n");
     offset += blockCount;
+    const visibleOutput = hasCompileOrRuntimeError
+      ? (execution.run.stdout ?? execution.run.output ?? "")
+      : caseBlocks;
 
     responses.push({
       ...execution,
       run: {
         ...execution.run,
-        stdout: caseBlocks,
-        output: caseBlocks,
+        stdout: visibleOutput,
+        output: visibleOutput,
       },
     });
   }
