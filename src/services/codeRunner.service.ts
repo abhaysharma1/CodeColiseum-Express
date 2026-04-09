@@ -383,18 +383,18 @@ export async function runCodeService(
     `${driver?.header ?? ""}\n${code}\n${driver?.footer ?? ""}`,
   );
 
-  let payload;
+  let payload: PistonExecuteRequest;
   const pistonExecuteUrl = getPistonExecuteUrl();
 
   if (languageId == 4) {
-    const payload: PistonExecuteRequest = {
+    payload = {
       language: pistonLanguage.language,
       version: pistonLanguage.version,
       files: [{ name: "Main.java", content: finalCode }],
       stdin: buildAggregatedInput(sanitizedCases),
     };
   } else {
-    const payload: PistonExecuteRequest = {
+    payload = {
       language: pistonLanguage.language,
       version: pistonLanguage.version,
       files: [{ content: finalCode }],
