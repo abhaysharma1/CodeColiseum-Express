@@ -52,6 +52,23 @@ const CASE_START_MARKER = "__CASE_START__";
 const CASE_END_MARKER = "__CASE_END__";
 const ALT_CASE_START_MARKER = "CASE_START_MARKER";
 const ALT_CASE_END_MARKER = "CASE_END_MARKER";
+const SINGLE_CASE_START_MARKER = "_CASE_START_";
+const SINGLE_CASE_END_MARKER = "_CASE_END_";
+
+const caseStartMarkers = [
+  CASE_START_MARKER,
+  ALT_CASE_START_MARKER,
+  SINGLE_CASE_START_MARKER,
+] as const;
+const caseEndMarkers = [
+  CASE_END_MARKER,
+  ALT_CASE_END_MARKER,
+  SINGLE_CASE_END_MARKER,
+] as const;
+const allCaseMarkers = [...caseStartMarkers, ...caseEndMarkers] as const;
+
+const escapeRegex = (value: string): string =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const pistonLanguageMap: Record<LanguageKey, PistonLanguageConfig> = {
   c: { language: "c", version: "*" },
@@ -86,12 +103,8 @@ const getPistonExecuteUrl = (): string => {
 };
 
 const extractMarkedBlocks = (content: string): string[] => {
-  const escapedStarts = [CASE_START_MARKER, ALT_CASE_START_MARKER].map(
-    (marker) => marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
-  );
-  const escapedEnds = [CASE_END_MARKER, ALT_CASE_END_MARKER].map((marker) =>
-    marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
-  );
+  const escapedStarts = caseStartMarkers.map(escapeRegex);
+  const escapedEnds = caseEndMarkers.map(escapeRegex);
   const pattern = new RegExp(
     `(?:${escapedStarts.join("|")})[\\s\\S]*?(?:${escapedEnds.join("|")})`,
     "g",
@@ -101,15 +114,29 @@ const extractMarkedBlocks = (content: string): string[] => {
 };
 
 const stripBlockMarkers = (block: string): string =>
-  block
-    .replace(CASE_START_MARKER, "")
-    .replace(CASE_END_MARKER, "")
-    .replace(ALT_CASE_START_MARKER, "")
-    .replace(ALT_CASE_END_MARKER, "")
+  allCaseMarkers
+    .reduce(
+      (cleaned, marker) =>
+        cleaned.replace(new RegExp(escapeRegex(marker), "g"), ""),
+      block,
+    )
     .trim();
 
+const stripCaseDelimiters = (content: string): string => {
+  let normalized = (content ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+  for (const marker of allCaseMarkers) {
+    normalized = normalized.replace(
+      new RegExp(`^\\s*${escapeRegex(marker)}\\s*$`, "gm"),
+      "",
+    );
+  }
+
+  return normalized.trim();
+};
+
 const parseCaseCountFromInput = (input: string): number | null => {
-  const firstLine = (input ?? "").trim().split("\n")[0]?.trim();
+  const firstLine = stripCaseDelimiters(input ?? "").split("\n")[0]?.trim();
 
   if (!firstLine) {
     return null;
@@ -124,20 +151,16 @@ const parseCaseCountFromInput = (input: string): number | null => {
 };
 
 const splitPlainLines = (content: string): string[] => {
-  const normalized = (content ?? "")
-    .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n")
-    .replace(new RegExp(`^${ALT_CASE_START_MARKER}$`, "gm"), "")
-    .replace(new RegExp(`^${ALT_CASE_END_MARKER}$`, "gm"), "")
-    .replace(new RegExp(`^${CASE_START_MARKER}$`, "gm"), "")
-    .replace(new RegExp(`^${CASE_END_MARKER}$`, "gm"), "")
-    .trim();
+  const normalized = stripCaseDelimiters(content ?? "");
 
   if (!normalized) {
     return [];
   }
 
-  return normalized.split("\n").map((line) => line.trim());
+  return normalized
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
 };
 
 const getOutputBlocks = (
@@ -167,14 +190,14 @@ const buildAggregatedInput = (cases: TestCase[]): string => {
   const bodyParts: string[] = [];
 
   for (const testCase of cases) {
-    const input = (testCase.input ?? "").trim();
+    const input = stripCaseDelimiters(testCase.input ?? "");
     const newlineIndex = input.indexOf("\n");
     const head = newlineIndex === -1 ? input : input.slice(0, newlineIndex);
     const body = newlineIndex === -1 ? "" : input.slice(newlineIndex + 1).trim();
     const count = Number.parseInt(head.trim(), 10);
 
     if (!Number.isFinite(count) || count < 0) {
-      return cases.map((entry) => (entry.input ?? "").trim()).join("\n");
+      return cases.map((entry) => stripCaseDelimiters(entry.input ?? "")).join("\n");
     }
 
     totalCaseCount += count;
@@ -188,6 +211,47 @@ const buildAggregatedInput = (cases: TestCase[]): string => {
   }
 
   return `${totalCaseCount}\n${bodyParts.join("\n")}`.trim();
+};
+
+const splitAggregatedInputCases = (
+  input: string,
+  expectedCount: number,
+): string[] => {
+  const cleanedInput = stripCaseDelimiters(input ?? "");
+  const lines = cleanedInput
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  if (lines.length === 0) {
+    return [];
+  }
+
+  const declaredCount = Number.parseInt(lines[0], 10);
+  const remaining = lines.slice(1);
+  const targetCount =
+    Number.isFinite(declaredCount) && declaredCount > 0
+      ? declaredCount
+      : expectedCount;
+
+  if (targetCount <= 0 || remaining.length === 0) {
+    return [];
+  }
+
+  if (remaining.length % targetCount === 0) {
+    const chunkSize = remaining.length / targetCount;
+    const chunks: string[] = [];
+
+    for (let i = 0; i < targetCount; i++) {
+      const start = i * chunkSize;
+      const end = start + chunkSize;
+      chunks.push(remaining.slice(start, end).join("\n").trim());
+    }
+
+    return chunks;
+  }
+
+  return [];
 };
 
 export function sanitizeSourceCode(code: string): string {
@@ -284,6 +348,12 @@ export async function runCodeService(
     throw error;
   }
 
+  const sanitizedCases = cases.map((testCase) => ({
+    ...testCase,
+    input: stripCaseDelimiters(testCase.input ?? ""),
+    output: stripCaseDelimiters(testCase.output ?? ""),
+  }));
+
   const problem = await prisma.problem.findUnique({
     where: { id: questionId },
   });
@@ -312,7 +382,7 @@ export async function runCodeService(
     language: pistonLanguage.language,
     version: pistonLanguage.version,
     files: [{ content: finalCode }],
-    stdin: buildAggregatedInput(cases),
+    stdin: buildAggregatedInput(sanitizedCases),
   };
 
   let execution: PistonExecutionResult;
@@ -347,26 +417,39 @@ export async function runCodeService(
   }
 
   const expectedLineCountHints =
-    cases.length === 1
-      ? [parseCaseCountFromInput(cases[0]?.input ?? "")]
-      : cases.map(() => null);
+    sanitizedCases.length === 1
+      ? [parseCaseCountFromInput(sanitizedCases[0]?.input ?? "")]
+      : sanitizedCases.map(() => null);
 
   const expectedBlocksByCase = cases.map((testCase, index) =>
     getOutputBlocks(testCase.output ?? "", expectedLineCountHints[index]),
   );
+  const shouldExpandAggregatedCase =
+    sanitizedCases.length === 1 && expectedBlocksByCase[0]?.length > 1;
+  const expandedInputs = shouldExpandAggregatedCase
+    ? splitAggregatedInputCases(
+        sanitizedCases[0]?.input ?? "",
+        expectedBlocksByCase[0].length,
+      )
+    : [];
 
-  const normalizedCases = cases.map((testCase, index) => {
-    const blocks = expectedBlocksByCase[index];
+  const normalizedCases = shouldExpandAggregatedCase
+    ? expectedBlocksByCase[0].map((block, index) => ({
+        input: expandedInputs[index] || `Case ${index + 1}`,
+        output: block,
+      }))
+    : sanitizedCases.map((testCase, index) => {
+        const blocks = expectedBlocksByCase[index];
 
-    return {
-      ...testCase,
-      output: blocks.join("\n"),
-    };
-  });
+        return {
+          ...testCase,
+          output: blocks.join("\n"),
+        };
+      });
 
-  const expectedBlockCounts = expectedBlocksByCase.map((blocks) =>
-    Math.max(blocks.length, 1),
-  );
+  const expectedBlockCounts = shouldExpandAggregatedCase
+    ? expectedBlocksByCase[0].map(() => 1)
+    : expectedBlocksByCase.map((blocks) => Math.max(blocks.length, 1));
   const expectedTotalBlocks = expectedBlockCounts.reduce(
     (sum, count) => sum + count,
     0,
@@ -399,15 +482,18 @@ export async function runCodeService(
     Boolean(execution.compile?.stderr?.trim()) ||
     Boolean(execution.run.stderr?.trim()) ||
     (typeof execution.run.code === "number" && execution.run.code !== 0);
+  const cleanedRuntimeOutput = splitPlainLines(
+    execution.run.stdout ?? execution.run.output ?? "",
+  ).join("\n");
 
-  for (let i = 0; i < cases.length; i++) {
+  for (let i = 0; i < normalizedCases.length; i++) {
     const blockCount = expectedBlockCounts[i];
     const caseBlocks = reconciledBlocks
       .slice(offset, offset + blockCount)
       .join("\n");
     offset += blockCount;
     const visibleOutput = hasCompileOrRuntimeError
-      ? (execution.run.stdout ?? execution.run.output ?? "")
+      ? cleanedRuntimeOutput
       : caseBlocks;
 
     responses.push({

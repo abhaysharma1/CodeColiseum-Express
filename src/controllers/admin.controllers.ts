@@ -64,6 +64,26 @@ interface PistonExecuteRequest {
 const normalizeOutput = (value?: string | null): string =>
   (value ?? "").replace(/\r\n/g, "\n").trimEnd();
 
+const caseDelimiterTokens = [
+  "__CASE_START__",
+  "__CASE_END__",
+  "CASE_START_MARKER",
+  "CASE_END_MARKER",
+  "_CASE_START_",
+  "_CASE_END_",
+];
+
+const stripCaseDelimiters = (value?: string | null): string => {
+  const normalized = (value ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+  return normalized
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !caseDelimiterTokens.includes(line))
+    .join("\n")
+    .trim();
+};
+
 const toJudgeLikeResponse = (input: {
   result: PistonExecutionResult;
   stdin: string;
@@ -72,6 +92,8 @@ const toJudgeLikeResponse = (input: {
   const { result, stdin, expectedOutput } = input;
   const compile = result.compile;
   const run = result.run;
+  const cleanStdin = stripCaseDelimiters(stdin);
+  const cleanExpectedOutput = stripCaseDelimiters(expectedOutput);
 
   if (compile && compile.code !== 0) {
     return {
@@ -83,8 +105,8 @@ const toJudgeLikeResponse = (input: {
       time: "0",
       memory: 0,
       token: "",
-      stdin,
-      expected_output: expectedOutput,
+      stdin: cleanStdin,
+      expected_output: cleanExpectedOutput,
     };
   }
 
@@ -98,13 +120,13 @@ const toJudgeLikeResponse = (input: {
       time: "0",
       memory: 0,
       token: "",
-      stdin,
-      expected_output: expectedOutput,
+      stdin: cleanStdin,
+      expected_output: cleanExpectedOutput,
     };
   }
 
   const actual = normalizeOutput(run.stdout || run.output || "");
-  const expected = normalizeOutput(expectedOutput);
+  const expected = normalizeOutput(cleanExpectedOutput);
   const accepted = actual === expected;
 
   return {
@@ -119,8 +141,8 @@ const toJudgeLikeResponse = (input: {
     time: "0",
     memory: 0,
     token: "",
-    stdin,
-    expected_output: expectedOutput,
+    stdin: cleanStdin,
+    expected_output: cleanExpectedOutput,
   };
 };
 
@@ -651,11 +673,14 @@ export const validateComplexityCases = async (req: Request, res: Response) => {
 
     for (let i = 0; i < cases.length; i++) {
       try {
+        const cleanInput = stripCaseDelimiters(cases[i].input);
+        const cleanOutput = stripCaseDelimiters(cases[i].output);
+
         const payload: PistonExecuteRequest = {
           language: refCode.language,
           version: "*",
           files: [{ content: refCode.code }],
-          stdin: cases[i].input,
+          stdin: cleanInput,
         };
 
         const response = await axios.post<PistonExecutionResult>(
@@ -669,8 +694,8 @@ export const validateComplexityCases = async (req: Request, res: Response) => {
 
         results[i] = toJudgeLikeResponse({
           result: response.data,
-          stdin: cases[i].input,
-          expectedOutput: cases[i].output,
+          stdin: cleanInput,
+          expectedOutput: cleanOutput,
         });
       } catch (error) {
         console.error(error);
@@ -767,11 +792,14 @@ export const validateProblem = async (req: Request, res: Response) => {
 
     const responses: JudgeResponse[] = [];
     for (const item of cases as Array<{ input: string; output: string }>) {
+      const cleanInput = stripCaseDelimiters(item.input);
+      const cleanOutput = stripCaseDelimiters(item.output);
+
       const payload: PistonExecuteRequest = {
         language,
         version: "*",
         files: [{ content: code }],
-        stdin: item.input,
+        stdin: cleanInput,
       };
 
       const execution = await axios.post<PistonExecutionResult>(
@@ -786,8 +814,8 @@ export const validateProblem = async (req: Request, res: Response) => {
       responses.push(
         toJudgeLikeResponse({
           result: execution.data,
-          stdin: item.input,
-          expectedOutput: item.output,
+          stdin: cleanInput,
+          expectedOutput: cleanOutput,
         }),
       );
     }
