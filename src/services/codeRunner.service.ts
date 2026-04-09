@@ -33,6 +33,7 @@ interface PistonExecutionResult {
 }
 
 interface PistonFile {
+  name?: string;
   content: string;
 }
 
@@ -136,7 +137,9 @@ const stripCaseDelimiters = (content: string): string => {
 };
 
 const parseCaseCountFromInput = (input: string): number | null => {
-  const firstLine = stripCaseDelimiters(input ?? "").split("\n")[0]?.trim();
+  const firstLine = stripCaseDelimiters(input ?? "")
+    .split("\n")[0]
+    ?.trim();
 
   if (!firstLine) {
     return null;
@@ -193,11 +196,14 @@ const buildAggregatedInput = (cases: TestCase[]): string => {
     const input = stripCaseDelimiters(testCase.input ?? "");
     const newlineIndex = input.indexOf("\n");
     const head = newlineIndex === -1 ? input : input.slice(0, newlineIndex);
-    const body = newlineIndex === -1 ? "" : input.slice(newlineIndex + 1).trim();
+    const body =
+      newlineIndex === -1 ? "" : input.slice(newlineIndex + 1).trim();
     const count = Number.parseInt(head.trim(), 10);
 
     if (!Number.isFinite(count) || count < 0) {
-      return cases.map((entry) => stripCaseDelimiters(entry.input ?? "")).join("\n");
+      return cases
+        .map((entry) => stripCaseDelimiters(entry.input ?? ""))
+        .join("\n");
     }
 
     totalCaseCount += count;
@@ -377,13 +383,24 @@ export async function runCodeService(
     `${driver?.header ?? ""}\n${code}\n${driver?.footer ?? ""}`,
   );
 
+  let payload;
   const pistonExecuteUrl = getPistonExecuteUrl();
-  const payload: PistonExecuteRequest = {
-    language: pistonLanguage.language,
-    version: pistonLanguage.version,
-    files: [{ content: finalCode }],
-    stdin: buildAggregatedInput(sanitizedCases),
-  };
+
+  if (languageId == 4) {
+    const payload: PistonExecuteRequest = {
+      language: pistonLanguage.language,
+      version: pistonLanguage.version,
+      files: [{ name: "Main.java", content: finalCode }],
+      stdin: buildAggregatedInput(sanitizedCases),
+    };
+  } else {
+    const payload: PistonExecuteRequest = {
+      language: pistonLanguage.language,
+      version: pistonLanguage.version,
+      files: [{ content: finalCode }],
+      stdin: buildAggregatedInput(sanitizedCases),
+    };
+  }
 
   let execution: PistonExecutionResult;
 
