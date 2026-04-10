@@ -3,7 +3,10 @@ import prisma from "../utils/prisma";
 import { auth } from "../utils/auth";
 import { fromNodeHeaders } from "better-auth/node";
 import { sanitizeSourceCode } from "./codeRunner.service";
-import { fromRuntimeLanguageId, getLanguageLabel } from "@/utils/languageCatalog";
+import {
+  fromRuntimeLanguageId,
+  getLanguageLabel,
+} from "@/utils/languageCatalog";
 import { sendPracticeSubmissionToSQS } from "@/utils/sqs";
 import { ExecutionStatus } from "../../generated/prisma/enums";
 
@@ -55,7 +58,7 @@ export async function submitCodeService(
     },
   });
 
-  if (!problem) {                
+  if (!problem) {
     const error = new Error("Couldn't find problem");
     (error as any).status = 400;
     throw error;
@@ -64,7 +67,7 @@ export async function submitCodeService(
   const submission = await prisma.selfSubmission.create({
     data: {
       sourceCode: sanitizeSourceCode(code),
-      language: getLanguageLabel(normalizedLanguage),
+      language: normalizedLanguage,
       passedTestcases: 0,
       userId: session.user.id,
       problemId: questionId,

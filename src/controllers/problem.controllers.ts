@@ -22,15 +22,29 @@ type NormalizedTestCase = {
   output: string;
 };
 
-const parseDelimitedOutputs = (output: string) => {
-  if (!output.includes(CASE_START_TOKEN) || !output.includes(CASE_END_TOKEN)) {
+const stripCaseDelimiters = (value: string) =>
+  (value ?? "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/^\s*_CASE_START_\s*$/gm, "")
+    .replace(/^\s*_CASE_END_\s*$/gm, "")
+    .trim();
+
+const parseDelimitedBlocks = (value: string) => {
+  if (!value.includes(CASE_START_TOKEN) || !value.includes(CASE_END_TOKEN)) {
     return [];
   }
 
-  const matches = [...output.matchAll(/_CASE_START_\s*([\s\S]*?)\s*_CASE_END_/g)];
+  const matches = [
+    ...value.matchAll(/_CASE_START_\s*([\s\S]*?)\s*_CASE_END_/g),
+  ];
   return matches
-    .map((match) => (match[1] ?? "").trim())
-    .filter((value) => value !== "");
+    .map((match) => stripCaseDelimiters((match[1] ?? "").trim()))
+    .filter((block) => block !== "");
+};
+
+const parseDelimitedOutputs = (output: string) => {
+  return parseDelimitedBlocks(output);
 };
 
 const splitBundledInput = (input: string, expectedCases: number) => {
@@ -100,22 +114,27 @@ const normalizeProblemTestCases = (rawCases: unknown): NormalizedTestCase[] => {
       continue;
     }
 
+    const inputBlocks = parseDelimitedBlocks(input);
     const outputBlocks = parseDelimitedOutputs(output);
-    if (outputBlocks.length <= 1) {
+
+    if (outputBlocks.length === 0) {
       normalized.push({
-        input: input.trim(),
-        output: output.trim(),
+        input: stripCaseDelimiters(input),
+        output: stripCaseDelimiters(output),
       });
       continue;
     }
 
-    const inputBlocks = splitBundledInput(input, outputBlocks.length);
-    const pairCount = Math.min(inputBlocks.length, outputBlocks.length);
+    const mappedInputBlocks =
+      inputBlocks.length > 0
+        ? inputBlocks
+        : splitBundledInput(stripCaseDelimiters(input), outputBlocks.length);
+    const pairCount = outputBlocks.length;
 
     for (let index = 0; index < pairCount; index += 1) {
       normalized.push({
-        input: (inputBlocks[index] ?? "").trim(),
-        output: (outputBlocks[index] ?? "").trim(),
+        input: stripCaseDelimiters(mappedInputBlocks[index] ?? ""),
+        output: stripCaseDelimiters(outputBlocks[index] ?? ""),
       });
     }
   }

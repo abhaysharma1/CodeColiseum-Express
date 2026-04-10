@@ -49,6 +49,13 @@ interface PistonLanguageConfig {
   version: string;
 }
 
+interface RunCaseResult {
+  input: string;
+  expectedOutput: string;
+  actualOutput: string;
+  passed: boolean;
+}
+
 const CASE_START_MARKER = "__CASE_START__";
 const CASE_END_MARKER = "__CASE_END__";
 const ALT_CASE_START_MARKER = "CASE_START_MARKER";
@@ -166,6 +173,13 @@ const splitPlainLines = (content: string): string[] => {
     .filter((line) => line.length > 0);
 };
 
+const normalizeInputBlock = (content: string): string =>
+  stripCaseDelimiters(content ?? "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .join("\n");
+
 const getOutputBlocks = (
   content: string,
   expectedLineCount?: number | null,
@@ -193,7 +207,7 @@ const buildAggregatedInput = (cases: TestCase[]): string => {
   const bodyParts: string[] = [];
 
   for (const testCase of cases) {
-    const input = stripCaseDelimiters(testCase.input ?? "");
+    const input = normalizeInputBlock(testCase.input ?? "");
     const newlineIndex = input.indexOf("\n");
     const head = newlineIndex === -1 ? input : input.slice(0, newlineIndex);
     const body =
@@ -202,7 +216,7 @@ const buildAggregatedInput = (cases: TestCase[]): string => {
 
     if (!Number.isFinite(count) || count < 0) {
       return cases
-        .map((entry) => stripCaseDelimiters(entry.input ?? ""))
+        .map((entry) => normalizeInputBlock(entry.input ?? ""))
         .join("\n");
     }
 
@@ -260,6 +274,19 @@ const splitAggregatedInputCases = (
   return [];
 };
 
+const getInputBlocks = (input: string, expectedCount: number): string[] => {
+  const markedBlocks = extractMarkedBlocks(input ?? "");
+
+  if (markedBlocks.length > 0) {
+    return markedBlocks.map(stripBlockMarkers);
+  }
+
+  return splitAggregatedInputCases(input, expectedCount);
+};
+
+const normalizeForCompare = (value: string): string =>
+  splitPlainLines(value ?? "").join("\n");
+
 export function sanitizeSourceCode(code: string): string {
   return (
     code
@@ -290,6 +317,9 @@ export interface RunCodeRequest {
 export interface RunCodeResponse {
   responses: PistonExecutionResult[];
   cases: TestCase[];
+  results: RunCaseResult[];
+  passedCount: number;
+  totalCount: number;
 }
 
 /* ----------------------------- Service ----------------------------- */
@@ -305,7 +335,7 @@ const httpAgent = new http.Agent({
 cacheable.install(httpAgent);
 
 export const piston = axios.create({
-  baseURL: process.env.PISTON_URL || "http://piston.internal:2000",
+  baseURL: process.env.PISTON_URI || "http://piston.internal:2000",
   httpAgent,
   timeout: 10000,
 });
@@ -357,7 +387,8 @@ export async function runCodeService(
   const sanitizedCases = cases.map((testCase) => ({
     ...testCase,
     input: stripCaseDelimiters(testCase.input ?? ""),
-    output: stripCaseDelimiters(testCase.output ?? ""),
+    // Keep expected output markers so block extraction can preserve case boundaries.
+    output: (testCase.output ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim(),
   }));
 
   const problem = await prisma.problem.findUnique({
@@ -438,14 +469,14 @@ export async function runCodeService(
       ? [parseCaseCountFromInput(sanitizedCases[0]?.input ?? "")]
       : sanitizedCases.map(() => null);
 
-  const expectedBlocksByCase = cases.map((testCase, index) =>
+  const expectedBlocksByCase = sanitizedCases.map((testCase, index) =>
     getOutputBlocks(testCase.output ?? "", expectedLineCountHints[index]),
   );
   const shouldExpandAggregatedCase =
     sanitizedCases.length === 1 && expectedBlocksByCase[0]?.length > 1;
   const expandedInputs = shouldExpandAggregatedCase
-    ? splitAggregatedInputCases(
-        sanitizedCases[0]?.input ?? "",
+    ? getInputBlocks(
+        cases[0]?.input ?? "",
         expectedBlocksByCase[0].length,
       )
     : [];
@@ -494,6 +525,8 @@ export async function runCodeService(
   }
 
   const responses: PistonExecutionResult[] = [];
+  const results: RunCaseResult[] = [];
+  let passedCount = 0;
   let offset = 0;
   const hasCompileOrRuntimeError =
     Boolean(execution.compile?.stderr?.trim()) ||
@@ -509,6 +542,14 @@ export async function runCodeService(
       .slice(offset, offset + blockCount)
       .join("\n");
     offset += blockCount;
+    const expectedOutput = normalizedCases[i]?.output ?? "";
+    const passed =
+      !hasCompileOrRuntimeError &&
+      normalizeForCompare(caseBlocks) === normalizeForCompare(expectedOutput);
+    if (passed) {
+      passedCount += 1;
+    }
+
     const visibleOutput = hasCompileOrRuntimeError
       ? cleanedRuntimeOutput
       : caseBlocks;
@@ -521,7 +562,20 @@ export async function runCodeService(
         output: visibleOutput,
       },
     });
+
+    results.push({
+      input: normalizedCases[i]?.input ?? "",
+      expectedOutput,
+      actualOutput: visibleOutput,
+      passed,
+    });
   }
 
-  return { responses, cases: normalizedCases };
+  return {
+    responses,
+    cases: normalizedCases,
+    results,
+    passedCount,
+    totalCount: normalizedCases.length,
+  };
 }
