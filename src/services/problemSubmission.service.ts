@@ -9,6 +9,11 @@ import {
 } from "@/utils/languageCatalog";
 import { sendPracticeSubmissionToSQS } from "@/utils/sqs";
 import { ExecutionStatus } from "../../generated/prisma/enums";
+import {
+  PollResponse,
+  TerminalResponse,
+  SubmissionStatusResponse,
+} from "@/types/submission.types";
 
 export interface SubmitCodeRequest {
   questionId: string;
@@ -87,7 +92,7 @@ export async function submitCodeService(
 export async function getPracticeSubmissionStatusService(
   req: Request,
   submissionId: string,
-): Promise<PracticeSubmissionStatusResponse> {
+): Promise<SubmissionStatusResponse> {
   if (!submissionId) {
     const error = new Error("submissionId is required");
     (error as any).status = 400;
@@ -104,16 +109,47 @@ export async function getPracticeSubmissionStatusService(
     throw error;
   }
 
+  // Quick check to see current status
+  const quickCheck = await prisma.selfSubmission.findUnique({
+    where: { id: submissionId },
+    select: { id: true, userId: true, status: true },
+  });
+
+  if (!quickCheck) {
+    const error = new Error("Submission not found");
+    (error as any).status = 404;
+    throw error;
+  }
+
+  if (quickCheck.userId !== session.user.id) {
+    const error = new Error("Forbidden");
+    (error as any).status = 403;
+    throw error;
+  }
+
+  // Return minimal response while polling
+  if (quickCheck.status === "PENDING" || quickCheck.status === "RUNNING") {
+    return {
+      success: true,
+      submissionId: quickCheck.id,
+      status: quickCheck.status,
+    } as PollResponse;
+  }
+
+  // Return complete response when terminal status is reached
   const submission = await prisma.selfSubmission.findUnique({
-    where: {
-      id: submissionId,
-    },
+    where: { id: submissionId },
     select: {
       id: true,
-      userId: true,
+      sourceCode: true,
+      language: true,
       status: true,
       passedTestcases: true,
+      totalTestcases: true,
+      executionTime: true,
+      memory: true,
       stderr: true,
+      createdAt: true,
     },
   });
 
@@ -123,17 +159,17 @@ export async function getPracticeSubmissionStatusService(
     throw error;
   }
 
-  if (submission.userId !== session.user.id) {
-    const error = new Error("Forbidden");
-    (error as any).status = 403;
-    throw error;
-  }
-
   return {
     success: true,
     submissionId: submission.id,
+    sourceCode: submission.sourceCode,
+    language: submission.language,
     status: submission.status as ExecutionStatus,
-    noOfPassedCases: submission.passedTestcases,
+    passedTestcases: submission.passedTestcases,
+    totalTestcases: submission.totalTestcases,
+    executionTime: submission.executionTime ?? undefined,
+    memory: submission.memory ?? undefined,
     stderr: submission.stderr,
-  };
+    createdAt: submission.createdAt,
+  } as TerminalResponse;
 }
