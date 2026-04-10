@@ -11,6 +11,57 @@ import {
   submitCodeService,
   SubmitCodeRequest,
 } from "../services/codeSubmission.service";
+import {
+  runCodeService,
+  RunCodeRequest,
+} from "../services/codeRunner.service";
+
+// Controller for running code against test cases (exam context)
+export const runCode = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { examId, problemId, sourceCode, languageId } = req.body;
+
+    if (!examId || !problemId || !sourceCode || !languageId) {
+      const error = new Error(
+        "examId, problemId, sourceCode and languageId are required",
+      );
+      (error as any).status = 400;
+      return next(error);
+    }
+
+    const examDetails = await prisma.exam.findUnique({
+      where: { id: examId },
+    });
+
+    if (!examDetails) {
+      const error = new Error("Exam Not Found");
+      (error as any).status = 404;
+      return next(error);
+    }
+
+    if (examDetails.sebEnabled) {
+      verifySEB(req);
+    }
+
+    const session = await canGiveExam(examDetails, req);
+    await validateAttempt(examDetails.id, session.user.id);
+
+    const requestData: RunCodeRequest = {
+      questionId: problemId,
+      languageId,
+      code: sourceCode,
+    };
+
+    const result = await runCodeService(req, requestData);
+    res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+};
 
 // Controller for fetching exam problems
 export const getTestProblems = async (

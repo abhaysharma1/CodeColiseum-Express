@@ -23,8 +23,9 @@ function ensureSqsConfigured(queueUrl?: string) {
     !process.env.AWS_SECRET_ACCESS_KEY ||
     !queueUrl
   ) {
-    return;
-    throw new Error("Missing required SQS configuration");
+    const error = new Error("Missing required SQS configuration");
+    (error as any).statusCode = 500;
+    throw error;
   }
 }
 

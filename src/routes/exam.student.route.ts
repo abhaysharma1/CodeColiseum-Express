@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   getProblemDescription,
+  runCode,
   getSubmissionStatus,
   getSubmissions,
   getTestCases,
@@ -26,6 +27,7 @@ router.get("/exam-details", getExamDetails);
 router.post("/test-problems", getTestProblems);
 router.post("/heartbeat", heartbeat);
 router.post("/start-test", startTest);
+router.post("/runcode", runCode);
 router.post("/submit-code", submitCode);
 router.post("/submit-test", submitTest);
 
