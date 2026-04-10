@@ -12,7 +12,7 @@ const sqsClient = new SQSClient({
   },
 });
 
-const AI_REVIEW_QUEUE_URL = process.env.SQS_QUEUE_URL;
+const AI_REVIEW_QUEUE_URL = process.env.SQS_AI_EVAL_QUEUE_URL;
 const EXAM_EXECUTION_QUEUE_URL = process.env.SQS_EXAM_QUEUE_URL;
 const PRACTICE_EXECUTION_QUEUE_URL = process.env.SQS_PRACTICE_QUEUE_URL;
 
