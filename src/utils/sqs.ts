@@ -13,6 +13,7 @@ const sqsClient = new SQSClient({
 });
 
 const AI_REVIEW_QUEUE_URL = process.env.SQS_AI_EVAL_QUEUE_URL;
+const AI_CHAT_QUEUE_URL = process.env.SQS_AI_CHAT_QUEUE_URL;
 const EXAM_EXECUTION_QUEUE_URL = process.env.SQS_EXAM_QUEUE_URL;
 const PRACTICE_EXECUTION_QUEUE_URL = process.env.SQS_PRACTICE_QUEUE_URL;
 
@@ -50,6 +51,10 @@ export async function sendMessageToSQS(payload: { selfSubmissionId: string }) {
   await sendSubmissionMessage(AI_REVIEW_QUEUE_URL, {
     selfSubmissionId: payload.selfSubmissionId,
   });
+}
+
+export async function sendAiChatToSQS(conversationId: string) {
+  await sendSubmissionMessage(AI_CHAT_QUEUE_URL, { conversationId });
 }
 
 export async function sendExamSubmissionToSQS(submissionId: string) {

@@ -991,7 +991,7 @@ All endpoints require Admin role.
 - Practice run-code (`/problems/runcode`) executes synchronously through Piston and requires `PISTON_URI`.
 - Exam code submission and practice submit-code paths integrate Judge0 and may fail if `JUDGE0_DOMAIN` or `JUDGE0_API_KEY` are missing.
 - Exam routes can enforce Safe Exam Browser when `sebEnabled = true` via `x-safeexambrowser-configkeyhash`.
-- AI endpoints depend on group AI settings, exam state, and Cloud Tasks/SQS worker pipeline.
+- AI endpoints depend on group AI settings, exam state, and an async worker pipeline (AWS SQS queue + worker).
 
 ## 14. Source of Truth
 

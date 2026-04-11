@@ -1,5 +1,5 @@
 import prisma from "@/utils/prisma";
-import { CloudTasksClient } from "@google-cloud/tasks";
+import { sendAiChatToSQS } from "@/utils/sqs";
 import { NextFunction, Request, Response } from "express";
 
 export const isAiEnabledAndGetGroupId = async (
@@ -203,44 +203,10 @@ export const chatWithAi = async (
       },
     });
 
-    const tasksClient = new CloudTasksClient();
-
-    const project = process.env.GCP_PROJECT!;
-    const location = process.env.GCP_LOCATION!;
-    const queueName = process.env.AI_REVIEW_QUEUE_NAME!;
-    const workerUrl = process.env.AI_WORKER_URL!;
-    const serviceAccountEmail = process.env.AI_TASK_SERVICE_ACCOUNT_EMAIL!;
-
-    const queuePath = tasksClient.queuePath(project, location, queueName);
-
-    const jobId = crypto.randomUUID();
-
-    const payload = {
-      conversationId: convo.id,
-    };
-
-    const task = {
-      httpRequest: {
-        httpMethod: "POST" as const,
-        url: `${workerUrl}/ai-chat-worker`,
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: Buffer.from(JSON.stringify(payload)).toString("base64"),
-        oidcToken: {
-          serviceAccountEmail,
-          audience: `${workerUrl}/ai-chat-worker`,
-        },
-      },
-    };
-
     try {
-      await tasksClient.createTask({
-        parent: queuePath,
-        task,
-      });
+      await sendAiChatToSQS(convo.id);
     } catch (error) {
-      throw new Error("Couldn't create Task");
+      throw new Error("Couldn't enqueue AI chat job");
     }
 
     return res.status(201).json({ status: "PROCESSING" });
