@@ -84,6 +84,44 @@ const stripCaseDelimiters = (value?: string | null): string => {
     .trim();
 };
 
+const caseStartTokens = ["__CASE_START__", "CASE_START_MARKER", "_CASE_START_"];
+const caseEndTokens = ["__CASE_END__", "CASE_END_MARKER", "_CASE_END_"];
+
+const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const extractMarkedBlocks = (content: string): string[] => {
+  const normalized = (content ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const escapedStarts = caseStartTokens.map(escapeRegex);
+  const escapedEnds = caseEndTokens.map(escapeRegex);
+  const pattern = new RegExp(
+    `(?:${escapedStarts.join("|")})[\\s\\S]*?(?:${escapedEnds.join("|")})`,
+    "g",
+  );
+
+  return (normalized.match(pattern) ?? []).map((block) => block.trim());
+};
+
+const stripBlockMarkers = (block: string): string =>
+  caseDelimiterTokens
+    .reduce(
+      (cleaned, marker) => cleaned.replace(new RegExp(escapeRegex(marker), "g"), ""),
+      block,
+    )
+    .trim();
+
+const normalizeForCompare = (value?: string | null): string => {
+  const normalized = stripCaseDelimiters(value ?? "");
+  if (!normalized) {
+    return "";
+  }
+
+  return normalized
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .join("\n");
+};
+
 const toJudgeLikeResponse = (input: {
   result: PistonExecutionResult;
   stdin: string;
@@ -793,7 +831,12 @@ export const validateProblem = async (req: Request, res: Response) => {
     const responses: JudgeResponse[] = [];
     for (const item of cases as Array<{ input: string; output: string }>) {
       const cleanInput = stripCaseDelimiters(item.input);
-      const cleanOutput = stripCaseDelimiters(item.output);
+      const rawExpected = (item.output ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+      const expectedMarkedBlocks = extractMarkedBlocks(rawExpected);
+      const expectedUsesMarkers = expectedMarkedBlocks.length > 0;
+      const expectedBlocks = expectedUsesMarkers
+        ? expectedMarkedBlocks.map(stripBlockMarkers)
+        : [stripCaseDelimiters(rawExpected)];
 
       const payload: PistonExecuteRequest = {
         language,
@@ -811,13 +854,71 @@ export const validateProblem = async (req: Request, res: Response) => {
         },
       );
 
-      responses.push(
-        toJudgeLikeResponse({
-          result: execution.data,
+      const result = execution.data;
+      const compile = result.compile;
+      const run = result.run;
+      const rawStdout = run.stdout || run.output || "";
+      const actualMarkedBlocks = expectedUsesMarkers
+        ? extractMarkedBlocks(rawStdout).map(stripBlockMarkers)
+        : [];
+      const missingRequiredMarkers = expectedUsesMarkers && actualMarkedBlocks.length === 0;
+      const visibleStdout = expectedUsesMarkers
+        ? actualMarkedBlocks.join("\n")
+        : stripCaseDelimiters(rawStdout);
+
+      if (compile && compile.code !== 0) {
+        responses.push({
+          stdout: compile.stdout || null,
+          stderr: compile.stderr || null,
+          compile_output: compile.stderr || compile.output || null,
+          message: compile.signal || null,
+          status: { id: 6, description: "Compilation Error" },
+          time: "0",
+          memory: 0,
+          token: "",
           stdin: cleanInput,
-          expectedOutput: cleanOutput,
-        }),
-      );
+          expected_output: expectedBlocks.join("\n"),
+        });
+        continue;
+      }
+
+      if (run.code !== 0) {
+        responses.push({
+          stdout: stripCaseDelimiters(rawStdout) || null,
+          stderr: run.stderr || null,
+          compile_output: null,
+          message: run.signal || null,
+          status: { id: 11, description: "Runtime Error" },
+          time: "0",
+          memory: 0,
+          token: "",
+          stdin: cleanInput,
+          expected_output: expectedBlocks.join("\n"),
+        });
+        continue;
+      }
+
+      const accepted = !missingRequiredMarkers && (expectedUsesMarkers
+        ? expectedBlocks.length === actualMarkedBlocks.length && expectedBlocks.every((block, index) => (
+            normalizeForCompare(block) === normalizeForCompare(actualMarkedBlocks[index] ?? "")
+          ))
+        : normalizeForCompare(rawStdout) === normalizeForCompare(expectedBlocks[0] ?? ""));
+
+      responses.push({
+        stdout: visibleStdout || null,
+        stderr: run.stderr || null,
+        compile_output: null,
+        message: null,
+        status: {
+          id: accepted ? 3 : 4,
+          description: accepted ? "Accepted" : "Wrong Answer",
+        },
+        time: "0",
+        memory: 0,
+        token: "",
+        stdin: cleanInput,
+        expected_output: expectedBlocks.join("\n"),
+      });
     }
 
     res.status(200).json({ responses, cases });

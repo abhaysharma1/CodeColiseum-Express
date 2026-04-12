@@ -202,6 +202,15 @@ const getOutputBlocks = (
   return [lines.join("\n")];
 };
 
+const getMarkedOutputBlocksStrict = (content: string): string[] => {
+  const markedBlocks = extractMarkedBlocks(content);
+  if (markedBlocks.length === 0) {
+    return [];
+  }
+
+  return markedBlocks.map(stripBlockMarkers);
+};
+
 const buildAggregatedInput = (cases: TestCase[]): string => {
   let totalCaseCount = 0;
   const bodyParts: string[] = [];
@@ -373,12 +382,37 @@ export async function runCodeService(
     throw error;
   }
 
-  const cases: TestCase[] =
-    typeof runTestCase.cases === "string"
-      ? JSON.parse(runTestCase.cases)
-      : runTestCase.cases;
+  let parsedCases: unknown = runTestCase.cases;
 
-  if (!Array.isArray(cases) || cases.length === 0) {
+  if (typeof parsedCases === "string") {
+    try {
+      parsedCases = JSON.parse(parsedCases);
+    } catch {
+      const error = new Error("Invalid test cases");
+      (error as any).status = 500;
+      throw error;
+    }
+  }
+
+  const rawCases = Array.isArray(parsedCases)
+    ? parsedCases
+    : parsedCases && typeof parsedCases === "object"
+      ? [parsedCases]
+      : [];
+
+  const cases: TestCase[] = rawCases
+    .map((item) => {
+      const input =
+        item && typeof (item as any).input === "string" ? (item as any).input : "";
+      const output =
+        item && typeof (item as any).output === "string"
+          ? (item as any).output
+          : "";
+      return { input, output };
+    })
+    .filter((testCase) => Boolean(testCase.input) || Boolean(testCase.output));
+
+  if (cases.length === 0) {
     const error = new Error("No test cases available");
     (error as any).status = 404;
     throw error;
@@ -390,6 +424,10 @@ export async function runCodeService(
     // Keep expected output markers so block extraction can preserve case boundaries.
     output: (testCase.output ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim(),
   }));
+
+  const expectedUsesMarkers = sanitizedCases.some(
+    (testCase) => extractMarkedBlocks(testCase.output ?? "").length > 0,
+  );
 
   const problem = await prisma.problem.findUnique({
     where: { id: questionId },
@@ -503,14 +541,16 @@ export async function runCodeService(
     0,
   );
 
-  const allBlocks = getOutputBlocks(
-    execution.run.stdout ?? "",
-    expectedTotalBlocks,
-  );
+  const rawStdout = execution.run.stdout ?? execution.run.output ?? "";
+
+  const allBlocks = expectedUsesMarkers
+    ? getMarkedOutputBlocksStrict(rawStdout)
+    : getOutputBlocks(rawStdout, expectedTotalBlocks);
+  const missingRequiredMarkers = expectedUsesMarkers && allBlocks.length === 0;
   const reconciledBlocks = [...allBlocks];
 
   if (reconciledBlocks.length === 0) {
-    reconciledBlocks.push((execution.run.stdout ?? "").trim());
+    reconciledBlocks.push(rawStdout.trim());
   }
 
   if (reconciledBlocks.length < expectedTotalBlocks) {
@@ -545,12 +585,13 @@ export async function runCodeService(
     const expectedOutput = normalizedCases[i]?.output ?? "";
     const passed =
       !hasCompileOrRuntimeError &&
+      !missingRequiredMarkers &&
       normalizeForCompare(caseBlocks) === normalizeForCompare(expectedOutput);
     if (passed) {
       passedCount += 1;
     }
 
-    const visibleOutput = hasCompileOrRuntimeError
+    const visibleOutput = hasCompileOrRuntimeError || missingRequiredMarkers
       ? cleanedRuntimeOutput
       : caseBlocks;
 
