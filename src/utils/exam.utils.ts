@@ -106,7 +106,6 @@ export async function validateAttempt(examId: string, studentId: string) {
   return attempt;
 }
 
-
 export class SEBError extends Error {
   status: number;
   constructor(message: string, status = 403) {
@@ -116,7 +115,6 @@ export class SEBError extends Error {
 }
 
 export function verifySEB(req: Request) {
-
   const configKey = process.env.SEB_CONFIG_KEY_HASH;
   const browserKey = process.env.SEB_BROWSER_KEY;
 
@@ -127,6 +125,13 @@ export function verifySEB(req: Request) {
   const receivedBrowserHash =
     (req.headers["x-safeexambrowser-browserexamkeyhash"] as string) ||
     (req.headers["x-safeexambrowser-requesthash"] as string);
+
+  console.log("Set Config Hash: ", configKey, "\n");
+  console.log("Received Config Hash: ", receivedConfigHash, "\n");
+  console.log("Set Browser Hash: ", browserKey, "\n");
+  console.log("Received Browser Hash: ", receivedBrowserHash, "\n");
+
+  
 
   const userAgent = (req.headers["user-agent"] as string) || "";
 
@@ -143,12 +148,13 @@ export function verifySEB(req: Request) {
   const proto = ((req.headers["x-forwarded-proto"] as string) || "https")
     .split(",")[0]
     .trim();
-  const host =
-    ((req.headers["x-forwarded-host"] as string) ||
-      (req.headers["host"] as string) ||
-      "")
-      .split(",")[0]
-      .trim();
+  const host = (
+    (req.headers["x-forwarded-host"] as string) ||
+    (req.headers["host"] as string) ||
+    ""
+  )
+    .split(",")[0]
+    .trim();
   const pathWithQuery = req.originalUrl || req.url;
 
   if (!host) {
@@ -174,9 +180,7 @@ export function verifySEB(req: Request) {
   if (expectedBrowserHash !== receivedBrowserHash) {
     throw new SEBError("Invalid SEB browser key");
   }
-
 }
-
 
 export function sanitizeSourceCode(code: string): string {
   return (
