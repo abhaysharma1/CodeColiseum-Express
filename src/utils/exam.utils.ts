@@ -117,31 +117,62 @@ export class SEBError extends Error {
 
 export function verifySEB(req: Request) {
 
-  const CONFIG_KEY = process.env.SEB_CONFIG_KEY; // RAW config key from SEB tool
-  const receivedHash = req.headers["x-safeexambrowser-configkeyhash"] as string;
+  const configKey = process.env.SEB_CONFIG_KEY_HASH;
+  const browserKey = process.env.SEB_BROWSER_KEY;
 
-  if (!CONFIG_KEY) throw new SEBError("Server missing config key", 500);
-  if (!receivedHash) throw new SEBError("Not opened in SEB");
+  const receivedConfigHash = req.headers[
+    "x-safeexambrowser-configkeyhash"
+  ] as string;
 
-  const proto = req.headers["x-forwarded-proto"] as string || "https";
-  const host = req.headers["host"] as string;
+  const receivedBrowserHash =
+    (req.headers["x-safeexambrowser-browserexamkeyhash"] as string) ||
+    (req.headers["x-safeexambrowser-requesthash"] as string);
 
-  const url = `${proto}://${host}${req.url}`;
+  const userAgent = (req.headers["user-agent"] as string) || "";
 
-  // 🔐 get absolute URL (without fragment)
-  // const url = req.nextUrl.origin + req.nextUrl.pathname + req.nextUrl.search;
+  if (!configKey) throw new SEBError("Server missing config key", 500);
+  if (!browserKey) throw new SEBError("Server missing browser key", 500);
+  if (!receivedConfigHash || !receivedBrowserHash) {
+    throw new SEBError("Not opened in SEB");
+  }
 
+  if (!/safeexambrowser|\bseb\b/i.test(userAgent)) {
+    throw new SEBError("Invalid SEB user agent");
+  }
 
+  const proto = ((req.headers["x-forwarded-proto"] as string) || "https")
+    .split(",")[0]
+    .trim();
+  const host =
+    ((req.headers["x-forwarded-host"] as string) ||
+      (req.headers["host"] as string) ||
+      "")
+      .split(",")[0]
+      .trim();
+  const pathWithQuery = req.originalUrl || req.url;
 
-  // 🔐 generate expected hash
-  const expectedHash = crypto
+  if (!host) {
+    throw new SEBError("Invalid host header", 400);
+  }
+
+  const url = `${proto}://${host}${pathWithQuery}`;
+
+  const expectedConfigHash = crypto
     .createHash("sha256")
-    .update(url + CONFIG_KEY, "utf8")
+    .update(url + configKey, "utf8")
     .digest("hex");
 
+  const expectedBrowserHash = crypto
+    .createHash("sha256")
+    .update(url + browserKey, "utf8")
+    .digest("hex");
 
-  if (expectedHash !== receivedHash) {
+  if (expectedConfigHash !== receivedConfigHash) {
     throw new SEBError("Invalid SEB configuration");
+  }
+
+  if (expectedBrowserHash !== receivedBrowserHash) {
+    throw new SEBError("Invalid SEB browser key");
   }
 
 }
