@@ -131,7 +131,7 @@ export function verifySEB(req: Request) {
   console.log("Set Browser Hash: ", browserKey, "\n");
   console.log("Received Browser Hash: ", receivedBrowserHash, "\n");
 
-  
+  console.log("HEADERS: \n", req.headers);
 
   const userAgent = (req.headers["user-agent"] as string) || "";
 
