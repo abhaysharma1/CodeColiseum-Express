@@ -115,70 +115,10 @@ export class SEBError extends Error {
 }
 
 export function verifySEB(req: Request) {
-  const configKey = process.env.SEB_CONFIG_KEY_HASH;
-  const browserKey = process.env.SEB_BROWSER_KEY;
-
-  const receivedConfigHash = req.headers[
-    "x-safeexambrowser-configkeyhash"
-  ] as string;
-
-  const receivedBrowserHash =
-    (req.headers["x-safeexambrowser-browserexamkeyhash"] as string) ||
-    (req.headers["x-safeexambrowser-requesthash"] as string);
-
-  console.log("Set Config Hash: ", configKey, "\n");
-  console.log("Received Config Hash: ", receivedConfigHash, "\n");
-  console.log("Set Browser Hash: ", browserKey, "\n");
-  console.log("Received Browser Hash: ", receivedBrowserHash, "\n");
-
-  console.log("HEADERS: \n", req.headers);
-
   const userAgent = (req.headers["user-agent"] as string) || "";
 
-  if (!configKey) throw new SEBError("Server missing config key", 500);
-  if (!browserKey) throw new SEBError("Server missing browser key", 500);
-  if (!receivedConfigHash || !receivedBrowserHash) {
-    throw new SEBError("Not opened in SEB");
-  }
-
   if (!/safeexambrowser|\bseb\b/i.test(userAgent)) {
-    throw new SEBError("Invalid SEB user agent");
-  }
-
-  const proto = ((req.headers["x-forwarded-proto"] as string) || "https")
-    .split(",")[0]
-    .trim();
-  const host = (
-    (req.headers["x-forwarded-host"] as string) ||
-    (req.headers["host"] as string) ||
-    ""
-  )
-    .split(",")[0]
-    .trim();
-  const pathWithQuery = req.originalUrl || req.url;
-
-  if (!host) {
-    throw new SEBError("Invalid host header", 400);
-  }
-
-  const url = `${proto}://${host}${pathWithQuery}`;
-
-  const expectedConfigHash = crypto
-    .createHash("sha256")
-    .update(url + configKey, "utf8")
-    .digest("hex");
-
-  const expectedBrowserHash = crypto
-    .createHash("sha256")
-    .update(url + browserKey, "utf8")
-    .digest("hex");
-
-  if (expectedConfigHash !== receivedConfigHash) {
-    throw new SEBError("Invalid SEB configuration");
-  }
-
-  if (expectedBrowserHash !== receivedBrowserHash) {
-    throw new SEBError("Invalid SEB browser key");
+    throw new SEBError("Not opened in SEB");
   }
 }
 
