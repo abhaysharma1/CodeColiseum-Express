@@ -92,7 +92,7 @@ export async function submitCodeService(
     data: {
       attemptId: examAttempt.id,
       problemId,
-      language: languageLabel,
+      language: normalizedLanguage,
       sourceCode: sanitizeSourceCode(sourceCode),
       status: ExecutionStatus.PENDING,
       examId,
