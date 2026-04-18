@@ -199,6 +199,7 @@ export const getProblems = async (
         number: true,
         title: true,
         description: includeDescription,
+        difficulty: true,
         tags: {
           select: {
             tag: true,
