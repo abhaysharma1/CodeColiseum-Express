@@ -151,11 +151,16 @@ export const getProblems = async (
     const { searchValue, tags, difficulty, take, skip, withDescription } =
       req.query;
 
+    const includeDescription =
+      withDescription === undefined
+        ? true
+        : String(withDescription).toLowerCase() !== "false";
+
     const where: any = {};
 
     // Add search conditions
     if (searchValue && String(searchValue).trim() !== "") {
-      if (withDescription) {
+      if (includeDescription) {
         where.OR = [
           { title: { contains: String(searchValue), mode: "insensitive" } },
           {
@@ -163,7 +168,7 @@ export const getProblems = async (
           },
           { id: String(searchValue) },
         ];
-      } else if (!withDescription || withDescription !== undefined) {
+      } else {
         where.OR = [
           { title: { contains: String(searchValue), mode: "insensitive" } },
           { id: String(searchValue) },
@@ -189,9 +194,13 @@ export const getProblems = async (
       take: take ? parseInt(String(take), 10) : 10,
       skip: skip ? parseInt(String(skip), 10) : 0,
       orderBy: { number: "asc" },
-      include: {
+      select: {
+        id: true,
+        number: true,
+        title: true,
+        description: includeDescription,
         tags: {
-          include: {
+          select: {
             tag: true,
           },
         },
