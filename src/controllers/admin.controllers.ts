@@ -19,6 +19,7 @@ import {
   supportedLanguageKeys,
   toRuntimeLanguageId,
 } from "@/utils/languageCatalog";
+import { runRawCodeService } from "@/services/runReferenceSolution.service";
 
 // Types
 interface JudgeStatus {
@@ -1336,6 +1337,15 @@ export const upsertProblem = async (req: Request, res: Response, next: NextFunct
 
     const isPublished = val.status === "PUBLISHED";
 
+    if (
+      isPublished &&
+      !val.solutions?.some((solution) => solution.code.trim().length > 0)
+    ) {
+      return res
+        .status(400)
+        .json({ message: "At least one reference solution is required to publish." });
+    }
+
     // Handle tags creation in parallel
     await prisma.tag.createMany({
       data: val.tags.map((t) => ({ name: t })),
@@ -1445,6 +1455,44 @@ export const upsertProblem = async (req: Request, res: Response, next: NextFunct
     }
 
     return res.status(200).json({ id: problem?.id, message: "Problem saved successfully" });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const runReferenceSolutionSchema = z.object({
+  languageId: z.number().int().optional(),
+  code: z.string(),
+  cases: z
+    .array(
+      z.object({
+        input: z.string(),
+        output: z.string(),
+      }),
+    )
+    .default([]),
+});
+
+export const runReferenceSolution = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<any> => {
+  try {
+    const parsed = runReferenceSolutionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ errors: parsed.error.format() });
+    }
+
+    const { languageId, code, cases } = parsed.data;
+
+    const result = await runRawCodeService(req, {
+      languageId,
+      code,
+      cases,
+    });
+
+    return res.status(200).json(result);
   } catch (error) {
     next(error);
   }
