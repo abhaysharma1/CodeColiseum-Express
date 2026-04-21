@@ -7,7 +7,10 @@ import { z } from "zod";
 const publicSignupSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(120),
   email: z.string().trim().email("Invalid email address"),
-  password: z.string().min(8, "Password must be at least 8 characters").max(128),
+  password: z
+    .string()
+    .min(8, "Password must be at least 8 characters")
+    .max(128),
   roleId: z
     .enum([GLOBAL_ROLE_IDS.ORG_STUDENT, GLOBAL_ROLE_IDS.ORG_TEACHER])
     .optional()
@@ -43,10 +46,9 @@ export const publicSignup = async (
         headers: new Headers(),
       });
     } catch (error: any) {
+      console.log(error);
       const message =
-        error?.body?.message ??
-        error?.message ??
-        "Failed to create account";
+        error?.body?.message ?? error?.message ?? "Failed to create account";
 
       if (/already exists|another email/i.test(String(message))) {
         return res.status(409).json({

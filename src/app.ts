@@ -9,7 +9,7 @@ import teacherRouter from "@/routes/teacher.route";
 import problemRouter from "@/routes/problem.route";
 import studentRouter from "@/routes/student.routes";
 import adminRouter from "@/routes/admin.route";
-import internalRouter from "@/routes/internal.routes"
+import internalRouter from "@/routes/internal.routes";
 import permissionsRouter from "@/routes/permissions.route";
 import publicAuthRouter from "@/routes/public.auth.route";
 import notificationsRouter from "@/routes/notifications.route";
@@ -23,6 +23,12 @@ app.use(helmet());
 app.use(
   cors({
     origin: process.env.FRONTEND_URL,
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-SafeExamBrowser-RequestHash",
+      "X-SafeExamBrowser-ConfigKeyHash", // include all SEB headers you use
+    ],
     credentials: true,
     optionsSuccessStatus: 200, // For legacy browser support
   }),
@@ -49,7 +55,7 @@ app.use("/admin", adminRouter);
 
 app.use("/problems", problemRouter);
 
-app.use("/internal",internalRouter)
+app.use("/internal", internalRouter);
 
 app.use("/permissions", permissionsRouter);
 
