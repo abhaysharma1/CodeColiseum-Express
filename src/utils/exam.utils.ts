@@ -149,10 +149,8 @@ export class SEBError extends Error {
 
 // }
 
-export async function verifySEB(req: Request) {
+export function verifySEB(req: Request) {
   const userAgent = (req.headers["user-agent"] as string) || "";
-
-  console.log(req.headers);
 
   if (!/safeexambrowser|\bseb\b/i.test(userAgent)) {
     throw new SEBError("Not opened in SEB");

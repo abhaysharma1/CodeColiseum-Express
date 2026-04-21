@@ -320,10 +320,11 @@ export const startTest = async (
     if (examDetails.sebEnabled) {
       try {
         verifySEB(req);
-      } catch (error) {
-        return res
-          .status(400)
-          .json({ message: "Please use SEB for this exam" });
+      } catch (err) {
+        if (err instanceof SEBError) {
+          return res.status(403).json({ message: err.message });
+        }
+        throw err; // re-throw unexpected errors
       }
     }
 
