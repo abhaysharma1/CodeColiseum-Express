@@ -13,6 +13,7 @@ import internalRouter from "@/routes/internal.routes";
 import permissionsRouter from "@/routes/permissions.route";
 import publicAuthRouter from "@/routes/public.auth.route";
 import notificationsRouter from "@/routes/notifications.route";
+import cookieParser from "cookie-parser";
 
 const app: Application = express();
 
@@ -35,6 +36,8 @@ app.use(
 );
 
 app.use("/api/auth", toNodeHandler(auth)); // Better Auth Api
+
+app.use(cookieParser());
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
