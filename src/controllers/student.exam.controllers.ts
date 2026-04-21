@@ -261,7 +261,6 @@ export const startTest = async (
 ) => {
   try {
     const { examId } = req.body;
-    const user = req.user;
 
     if (!examId) {
       const error = new Error("Exam ID is required");
@@ -281,41 +280,45 @@ export const startTest = async (
       return next(error);
     }
 
+    // if (examDetails.sebEnabled) {
+    //   console.log("Cookies: ", req.cookies);
+    //   const sebHash = req.cookies["seb-hash"];
+    //   if (!sebHash) {
+    //     return res.status(403).json({ error: "Must use Safe Exam Browser" });
+    //   }
+
+    //   // verify the hash is valid (not tampered)
+    //   const isValid = verifyExamHash(
+    //     `${process.env.FRONTEND_URL}/tests/attempt/${examId}`,
+    //     sebHash,
+    //   );
+
+    //   if (!isValid) {
+    //     return res.status(403).json({ error: "Invalid SEB hash" });
+    //   }
+
+    //   const examSession = await prisma.examSession.create({
+    //     data: {
+    //       userId: user.id,
+    //       examId,
+    //       sebVerified: true,
+    //       sebHash,
+    //       token: crypto.randomUUID().toString(),
+    //       expiresAt: new Date(Date.now() + examDetails.durationMin * 60 * 1000),
+    //     },
+    //   });
+
+    //   // set exam session token as httpOnly cookie
+    //   res.cookie("exam-session", examSession.token, {
+    //     httpOnly: true,
+    //     secure: true,
+    //     sameSite: "strict",
+    //     expires: examSession.expiresAt,
+    //   });
+    // }
+
     if (examDetails.sebEnabled) {
-      console.log("Cookies: ", req.cookies);
-      const sebHash = req.cookies["seb-hash"];
-      if (!sebHash) {
-        return res.status(403).json({ error: "Must use Safe Exam Browser" });
-      }
-
-      // verify the hash is valid (not tampered)
-      const isValid = verifyExamHash(
-        `${process.env.FRONTEND_URL}/tests/attempt/${examId}`,
-        sebHash,
-      );
-
-      if (!isValid) {
-        return res.status(403).json({ error: "Invalid SEB hash" });
-      }
-
-      const examSession = await prisma.examSession.create({
-        data: {
-          userId: user.id,
-          examId,
-          sebVerified: true,
-          sebHash,
-          token: crypto.randomUUID().toString(),
-          expiresAt: new Date(Date.now() + examDetails.durationMin * 60 * 1000),
-        },
-      });
-
-      // set exam session token as httpOnly cookie
-      res.cookie("exam-session", examSession.token, {
-        httpOnly: true,
-        secure: true,
-        sameSite: "strict",
-        expires: examSession.expiresAt,
-      });
+      verifySEB(req);
     }
 
     const session = await canGiveExam(examDetails, req);

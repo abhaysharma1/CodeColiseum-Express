@@ -114,6 +114,41 @@ export class SEBError extends Error {
   }
 }
 
+// export async function verifySEB(req: Request) {
+//   const userAgent = (req.headers["user-agent"] as string) || "";
+
+//   console.log(req.headers);
+
+//   if (!/safeexambrowser|\bseb\b/i.test(userAgent)) {
+//     throw new SEBError("Not opened in SEB");
+//   }
+
+//   const token = req.cookies["exam-session"];
+
+//   if (!token) {
+//     throw new Error("No active exam session")
+//   }
+
+//   const session = await prisma.examSession.findUnique({
+//     where: { token },
+//   });
+
+//   if (!session) {
+//     throw new Error("Invalid exam session")
+
+//   }
+
+//   if (session.expiresAt < new Date()) {
+//     throw new Error("Exam session expired" )
+
+//   }
+
+//   if (!session.sebVerified) {
+//     throw new Error("SEB verification failed")
+//   }
+
+// }
+
 export async function verifySEB(req: Request) {
   const userAgent = (req.headers["user-agent"] as string) || "";
 
@@ -122,31 +157,6 @@ export async function verifySEB(req: Request) {
   if (!/safeexambrowser|\bseb\b/i.test(userAgent)) {
     throw new SEBError("Not opened in SEB");
   }
-
-  const token = req.cookies["exam-session"];
-
-  if (!token) {
-    throw new Error("No active exam session")
-  }
-
-  const session = await prisma.examSession.findUnique({
-    where: { token },
-  });
-
-  if (!session) {
-    throw new Error("Invalid exam session")
-    
-  }
-
-  if (session.expiresAt < new Date()) {
-    throw new Error("Exam session expired" )
-
-  }
-
-  if (!session.sebVerified) {
-    throw new Error("SEB verification failed")
-  }
-
 }
 
 export function sanitizeSourceCode(code: string): string {
