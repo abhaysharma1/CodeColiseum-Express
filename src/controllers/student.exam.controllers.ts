@@ -282,6 +282,7 @@ export const startTest = async (
     }
 
     if (examDetails.sebEnabled) {
+      console.log("Cookies: ", req.cookies);
       const sebHash = req.cookies["seb-hash"];
       if (!sebHash) {
         return res.status(403).json({ error: "Must use Safe Exam Browser" });
