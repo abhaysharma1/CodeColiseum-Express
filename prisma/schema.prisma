@@ -40,6 +40,7 @@ model User {
   studentProblemStats    StudentProblemStats[]
   notifications          Notification[]
   notificationRecipients NotificationRecipient[]
+  examSessions           ExamSession[]
 
   @@index([email])
   @@index([globalRoleId])
@@ -214,7 +215,7 @@ model selfSubmission {
   executionTime   Float?
   memory          Float?
 
-  stderr          String?
+  stderr String?
 
   createdAt DateTime @default(now())
 
@@ -456,6 +457,21 @@ model AiEvaluation {
   examId     String?
 
   @@index([submissionId])
+}
+
+model ExamSession {
+  id          String   @id @default(cuid())
+  userId      String
+  examId      String
+  sebVerified Boolean  @default(false)
+  sebHash     String
+  token       String   @unique
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
 }
 
 // ===== Student Groups =====

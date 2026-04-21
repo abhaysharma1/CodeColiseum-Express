@@ -114,14 +114,39 @@ export class SEBError extends Error {
   }
 }
 
-export function verifySEB(req: Request) {
+export async function verifySEB(req: Request) {
   const userAgent = (req.headers["user-agent"] as string) || "";
 
-  console.log(req.headers)
+  console.log(req.headers);
 
   if (!/safeexambrowser|\bseb\b/i.test(userAgent)) {
     throw new SEBError("Not opened in SEB");
   }
+
+  const token = req.cookies["exam-session"];
+
+  if (!token) {
+    throw new Error("No active exam session")
+  }
+
+  const session = await prisma.examSession.findUnique({
+    where: { token },
+  });
+
+  if (!session) {
+    throw new Error("Invalid exam session")
+    
+  }
+
+  if (session.expiresAt < new Date()) {
+    throw new Error("Exam session expired" )
+
+  }
+
+  if (!session.sebVerified) {
+    throw new Error("SEB verification failed")
+  }
+
 }
 
 export function sanitizeSourceCode(code: string): string {
@@ -140,5 +165,20 @@ export function sanitizeSourceCode(code: string): string {
       // Normalize line endings
       .replace(/\r\n/g, "\n")
       .replace(/\r/g, "\n")
+  );
+}
+
+const SEB_CONFIG_KEY = process.env.SEB_CONFIG_KEY!; // from your .seb file
+
+export function verifyExamHash(url: string, receivedHash: string): boolean {
+  const expectedHash = crypto
+    .createHash("sha256")
+    .update(url + SEB_CONFIG_KEY)
+    .digest("hex");
+
+  // constant time comparison to prevent timing attacks
+  return crypto.timingSafeEqual(
+    Buffer.from(expectedHash),
+    Buffer.from(receivedHash),
   );
 }
