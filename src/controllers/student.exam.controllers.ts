@@ -318,7 +318,13 @@ export const startTest = async (
     // }
 
     if (examDetails.sebEnabled) {
-      verifySEB(req);
+      try {
+        verifySEB(req);
+      } catch (error) {
+        return res
+          .status(400)
+          .json({ message: "Please use SEB for this exam" });
+      }
     }
 
     const session = await canGiveExam(examDetails, req);
