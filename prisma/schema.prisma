@@ -289,6 +289,7 @@ model Exam {
   aiEvaluations   AiEvaluation[]
   aiconversations AIConversation[]
   examAnalytics   ExamAnalytics?
+  groupExamAnalytics GroupExamAnalytics[]
 
   @@index([id, creatorId])
 }
@@ -496,6 +497,7 @@ model Group {
   studentOverallStats StudentOverallStats[]
   groupProblemStats   GroupProblemStats[]
   studentProblemStats StudentProblemStats[]
+  groupExamAnalytics  GroupExamAnalytics[]
 
   @@index([creatorId])
 }
@@ -878,6 +880,53 @@ model ExamAnalytics {
 
   @@index([examId])
   @@index([updatedAt])
+}
+
+model GroupExamAnalytics {
+  id String @id @default(uuid())
+
+  groupId String
+  examId  String
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  exam  Exam  @relation(fields: [examId], references: [id], onDelete: Cascade)
+
+  // Participant stats
+  totalEnrolled  Int   @default(0)
+  totalAttempted Int   @default(0)
+  totalCompleted Int   @default(0)
+  completionRate Float @default(0)
+
+  // Score stats
+  avgScore     Float @default(0)
+  highestScore Float @default(0)
+  lowestScore  Float @default(0)
+  medianScore  Float @default(0)
+
+  // Distribution
+  scoreDistribution Json @default(dbgenerated("'{}'::jsonb")) // { "0-20": 5, "20-40": 10, ... }
+
+  // Problem-level
+  problemDifficulties Json @default(dbgenerated("'[]'::jsonb")) // Array of { problemId, avgScore, failureRate }
+
+  // Time stats
+  avgTimeToComplete Float @default(0) // minutes
+  avgAttempts       Float @default(1)
+
+  // Submission stats
+  totalSubmissions Int @default(0)
+  acceptedCount    Int @default(0)
+  partialCount     Int @default(0)
+  failedCount      Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([groupId, examId])
+  @@index([groupId])
+  @@index([examId])
+  @@index([updatedAt])
+  @@index([groupId, updatedAt])
 }
 
 // ===== Notification System =====

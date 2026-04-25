@@ -2,7 +2,21 @@ import { Router } from "express";
 import teacherExamRouter from "@/routes/exam.teacher.route";
 import { isTeacher } from "@/middleware/isTeacher.middleware";
 import { addCoTeacherToGroup, addMemberToGroup, createGroup, getAllGroups, getGroupDetails, getGroupExams, getGroupMembers, removeMemberFromGroup, updateGroupDetails } from "@/controllers/teacher.controllers";
-import { getGroupOverallStats, getGroupProblemStats, getStudentOverallStats, getStudentProblemStats, getAnalyticsStudents, getStudentDetailedAnalytics, getAnalyticsOverview, getAnalyticsCharts } from "@/controllers/teacher.stats.controllers";
+import {
+	getGroupOverallStats,
+	getGroupProblemStats,
+	getStudentOverallStats,
+	getStudentProblemStats,
+	getAnalyticsStudents,
+	getStudentDetailedAnalytics,
+	getAnalyticsOverview,
+	getAnalyticsCharts,
+	getAnalyticsProblems,
+	getAnalyticsProblemDetails,
+	getAnalyticsProblemStudents,
+	getAnalyticsExams,
+	getAnalyticsExamDetails,
+} from "@/controllers/teacher.stats.controllers";
 import { requirePermission } from "@/middleware/permission.middleware";
 import { PERMISSIONS } from "@/permissions/permission.constants";
 
@@ -105,6 +119,33 @@ router.get(
 	"/analytics/students/:studentId/details",
 	requirePermission(PERMISSIONS.ANALYTICS_VIEW, getGroupIdFromQuery),
 	getStudentDetailedAnalytics
+);
+
+router.get(
+	"/analytics/problems",
+	requirePermission(PERMISSIONS.ANALYTICS_VIEW, getGroupIdFromQuery),
+	getAnalyticsProblems
+);
+router.get(
+	"/analytics/problems/:problemId/details",
+	requirePermission(PERMISSIONS.ANALYTICS_VIEW, getGroupIdFromQuery),
+	getAnalyticsProblemDetails
+);
+router.get(
+	"/analytics/problems/:problemId/students",
+	requirePermission(PERMISSIONS.ANALYTICS_VIEW, getGroupIdFromQuery),
+	getAnalyticsProblemStudents
+);
+
+router.get(
+	"/analytics/exams",
+	requirePermission(PERMISSIONS.ANALYTICS_VIEW, getGroupIdFromQuery),
+	getAnalyticsExams
+);
+router.get(
+	"/analytics/exams/:examId/details",
+	requirePermission(PERMISSIONS.ANALYTICS_VIEW, getGroupIdFromQuery),
+	getAnalyticsExamDetails
 );
 
 export default router;

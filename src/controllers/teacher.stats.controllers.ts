@@ -607,3 +607,461 @@ export const getAnalyticsCharts = async (
     next(error);
   }
 };
+
+// ============================================================================
+// PROBLEM + EXAM ANALYTICS (group-scoped)
+// ============================================================================
+
+/**
+ * GET /teacher/analytics/problems
+ * Paginated problem analytics for a group
+ */
+export const getAnalyticsProblems = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const user = req.user;
+    const groupId = String(req.query.groupId);
+
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(100, Number(req.query.limit) || 25);
+    const skip = (page - 1) * limit;
+
+    const search = String(req.query.search || "").trim();
+    const difficultyTier = String(req.query.difficultyTier || "all").toLowerCase();
+    const sortBy = String(req.query.sortBy || "attemptedCount");
+    const sortOrder = String(req.query.sortOrder || "desc").toLowerCase();
+
+    if (!groupId) return res.status(400).json({ error: "groupId is required" });
+
+    const group = await prisma.group.findUnique({ where: { id: groupId } });
+    if (!group) return res.status(404).json({ error: "Group not found" });
+    if (!(await canViewGroupAnalytics(user.id, groupId, group.creatorId)))
+      return res.status(403).json({ error: "Not authorized" });
+
+    const whereClause: any = {
+      groupId,
+      ...(difficultyTier !== "all" ? { difficultyTier } : {}),
+      ...(search
+        ? {
+            problem: {
+              OR: [
+                { title: { contains: search, mode: "insensitive" } },
+              ],
+            },
+          }
+        : {}),
+    };
+
+    const sortMapping: Record<string, any> = {
+      attemptedCount: { attemptedCount: sortOrder },
+      successRate: { successRate: sortOrder },
+      failureRate: { failureRate: sortOrder },
+      avgTime: { avgTime: sortOrder },
+      acceptedCount: { acceptedCount: sortOrder },
+      totalAttempts: { totalAttempts: sortOrder },
+      avgRuntime: { avgRuntime: sortOrder },
+    };
+    const orderBy = sortMapping[sortBy] || sortMapping.attemptedCount;
+
+    const total = await prisma.groupProblemStats.count({ where: whereClause });
+
+    const rows = await prisma.groupProblemStats.findMany({
+      where: whereClause,
+      include: {
+        problem: {
+          select: { id: true, number: true, title: true, difficulty: true },
+        },
+      },
+      orderBy,
+      skip,
+      take: limit,
+    });
+
+    const data = rows.map((r) => ({
+      problemId: r.problemId,
+      problemNumber: r.problem.number,
+      problemTitle: r.problem.title,
+      difficulty: r.problem.difficulty,
+      difficultyTier: r.difficultyTier,
+      successRate: r.successRate,
+      failureRate: r.failureRate,
+      totalStudents: r.totalStudents,
+      attemptedCount: r.attemptedCount,
+      acceptedCount: r.acceptedCount,
+      totalAttempts: r.totalAttempts,
+      avgRuntime: r.avgRuntime,
+      avgMemory: r.avgMemory,
+      avgTime: r.avgTime,
+      updatedAt: r.updatedAt,
+    }));
+
+    return res.status(200).json({
+      data,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /teacher/analytics/problems/:problemId/details
+ * Summary for a single problem within a group
+ */
+export const getAnalyticsProblemDetails = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const user = req.user;
+    const groupId = String(req.query.groupId);
+    const problemId = String(req.params.problemId);
+
+    if (!groupId) return res.status(400).json({ error: "groupId is required" });
+
+    const group = await prisma.group.findUnique({ where: { id: groupId } });
+    if (!group) return res.status(404).json({ error: "Group not found" });
+    if (!(await canViewGroupAnalytics(user.id, groupId, group.creatorId)))
+      return res.status(403).json({ error: "Not authorized" });
+
+    const stats = await prisma.groupProblemStats.findUnique({
+      where: { groupId_problemId: { groupId, problemId } },
+      include: {
+        problem: {
+          select: { id: true, number: true, title: true, difficulty: true },
+        },
+      },
+    });
+
+    if (!stats) {
+      return res.status(404).json({ error: "Problem analytics not found" });
+    }
+
+    return res.status(200).json({
+      problem: stats.problem,
+      stats: {
+        difficultyTier: stats.difficultyTier,
+        successRate: stats.successRate,
+        failureRate: stats.failureRate,
+        totalStudents: stats.totalStudents,
+        attemptedCount: stats.attemptedCount,
+        acceptedCount: stats.acceptedCount,
+        totalAttempts: stats.totalAttempts,
+        avgRuntime: stats.avgRuntime,
+        avgMemory: stats.avgMemory,
+        avgTime: stats.avgTime,
+        updatedAt: stats.updatedAt,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /teacher/analytics/problems/:problemId/students
+ * Paginated student list for a specific problem within a group
+ */
+export const getAnalyticsProblemStudents = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const user = req.user;
+    const groupId = String(req.query.groupId);
+    const problemId = String(req.params.problemId);
+
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(100, Number(req.query.limit) || 25);
+    const skip = (page - 1) * limit;
+
+    const search = String(req.query.search || "").trim();
+    const solvedStatus = String(req.query.solvedStatus || "all"); // all, solved, unsolved, weak
+
+    if (!groupId) return res.status(400).json({ error: "groupId is required" });
+
+    const group = await prisma.group.findUnique({ where: { id: groupId } });
+    if (!group) return res.status(404).json({ error: "Group not found" });
+    if (!(await canViewGroupAnalytics(user.id, groupId, group.creatorId)))
+      return res.status(403).json({ error: "Not authorized" });
+
+    const whereClause: any = { groupId, problemId };
+
+    if (solvedStatus === "solved") whereClause.solved = true;
+    else if (solvedStatus === "unsolved") whereClause.solved = false;
+    else if (solvedStatus === "weak") whereClause.isWeak = true;
+
+    if (search) {
+      whereClause.student = {
+        OR: [
+          { name: { contains: search, mode: "insensitive" } },
+          { email: { contains: search, mode: "insensitive" } },
+        ],
+      };
+    }
+
+    const total = await prisma.studentProblemStats.count({ where: whereClause });
+    const rows = await prisma.studentProblemStats.findMany({
+      where: whereClause,
+      include: {
+        student: { select: { id: true, name: true, email: true } },
+      },
+      orderBy: { attempts: "desc" },
+      skip,
+      take: limit,
+    });
+
+    const data = rows.map((r) => ({
+      studentId: r.studentId,
+      name: r.student.name,
+      email: r.student.email,
+      attempts: r.attempts,
+      solved: r.solved,
+      isWeak: r.isWeak,
+      successRate: r.successRate,
+      avgTime: r.avgTime,
+      lastAttemptAt: r.lastAttemptAt,
+    }));
+
+    return res.status(200).json({
+      data,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /teacher/analytics/exams
+ * Paginated exam list for a group with group-scoped analytics attached
+ */
+export const getAnalyticsExams = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const user = req.user;
+    const groupId = String(req.query.groupId);
+
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(100, Number(req.query.limit) || 25);
+    const skip = (page - 1) * limit;
+
+    const search = String(req.query.search || "").trim();
+    const status = String(req.query.status || "all");
+    const dateFrom = req.query.dateFrom ? new Date(String(req.query.dateFrom)) : undefined;
+    const dateTo = req.query.dateTo ? new Date(String(req.query.dateTo)) : undefined;
+
+    const sortBy = String(req.query.sortBy || "endDate");
+    const sortOrder = String(req.query.sortOrder || "desc").toLowerCase();
+
+    if (!groupId) return res.status(400).json({ error: "groupId is required" });
+
+    const group = await prisma.group.findUnique({ where: { id: groupId } });
+    if (!group) return res.status(404).json({ error: "Group not found" });
+    if (!(await canViewGroupAnalytics(user.id, groupId, group.creatorId)))
+      return res.status(403).json({ error: "Not authorized" });
+
+    const whereClause: any = {
+      examGroups: { some: { groupId } },
+      ...(search
+        ? { title: { contains: search, mode: "insensitive" } }
+        : {}),
+      ...(status !== "all" ? { status } : {}),
+      ...(dateFrom || dateTo
+        ? {
+            endDate: {
+              ...(dateFrom ? { gte: dateFrom } : {}),
+              ...(dateTo ? { lte: dateTo } : {}),
+            },
+          }
+        : {}),
+    };
+
+    const sortMapping: Record<string, any> = {
+      endDate: { endDate: sortOrder },
+      startDate: { startDate: sortOrder },
+      title: { title: sortOrder },
+      durationMin: { durationMin: sortOrder },
+    };
+    const orderBy = sortMapping[sortBy] || sortMapping.endDate;
+
+    const total = await prisma.exam.count({ where: whereClause });
+    const exams = await prisma.exam.findMany({
+      where: whereClause,
+      orderBy,
+      skip,
+      take: limit,
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        startDate: true,
+        endDate: true,
+        durationMin: true,
+        groupExamAnalytics: {
+          where: { groupId },
+          take: 1,
+        },
+      },
+    });
+
+    const data = exams.map((e) => {
+      const ga = e.groupExamAnalytics[0];
+      return {
+        examId: e.id,
+        examTitle: e.title,
+        status: e.status,
+        startDate: e.startDate,
+        endDate: e.endDate,
+        durationMin: e.durationMin,
+        analytics: ga
+          ? {
+              totalEnrolled: ga.totalEnrolled,
+              totalAttempted: ga.totalAttempted,
+              totalCompleted: ga.totalCompleted,
+              completionRate: ga.completionRate,
+              avgScore: ga.avgScore,
+              highestScore: ga.highestScore,
+              lowestScore: ga.lowestScore,
+              medianScore: ga.medianScore,
+              scoreDistribution: ga.scoreDistribution,
+              avgTimeToComplete: ga.avgTimeToComplete,
+              avgAttempts: ga.avgAttempts,
+              totalSubmissions: ga.totalSubmissions,
+              acceptedCount: ga.acceptedCount,
+              partialCount: ga.partialCount,
+              failedCount: ga.failedCount,
+              updatedAt: ga.updatedAt,
+            }
+          : null,
+      };
+    });
+
+    return res.status(200).json({
+      data,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /teacher/analytics/exams/:examId/details
+ * Group-scoped analytics details for a specific exam
+ */
+export const getAnalyticsExamDetails = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const user = req.user;
+    const groupId = String(req.query.groupId);
+    const examId = String(req.params.examId);
+
+    if (!groupId) return res.status(400).json({ error: "groupId is required" });
+
+    const group = await prisma.group.findUnique({ where: { id: groupId } });
+    if (!group) return res.status(404).json({ error: "Group not found" });
+    if (!(await canViewGroupAnalytics(user.id, groupId, group.creatorId)))
+      return res.status(403).json({ error: "Not authorized" });
+
+    const analytics = await prisma.groupExamAnalytics.findUnique({
+      where: { groupId_examId: { groupId, examId } },
+      include: {
+        exam: {
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            startDate: true,
+            endDate: true,
+            durationMin: true,
+          },
+        },
+      },
+    });
+
+    if (!analytics) {
+      return res.status(404).json({ error: "Exam analytics not found" });
+    }
+
+    const difficulties = Array.isArray(analytics.problemDifficulties)
+      ? (analytics.problemDifficulties as any[])
+      : [];
+
+    const problemIds = difficulties
+      .map((d) => String(d.problemId))
+      .filter(Boolean);
+
+    const problems = problemIds.length
+      ? await prisma.problem.findMany({
+          where: { id: { in: problemIds } },
+          select: { id: true, number: true, title: true, difficulty: true },
+        })
+      : [];
+
+    const problemMap = new Map(problems.map((p) => [p.id, p]));
+
+    const problemDifficulties = difficulties.map((d) => {
+      const p = problemMap.get(String(d.problemId));
+      return {
+        problemId: String(d.problemId),
+        problemNumber: p?.number,
+        problemTitle: p?.title,
+        difficulty: p?.difficulty,
+        avgScore: Number(d.avgScore || 0),
+        failureRate: Number(d.failureRate || 0),
+      };
+    });
+
+    return res.status(200).json({
+      exam: analytics.exam,
+      analytics: {
+        totalEnrolled: analytics.totalEnrolled,
+        totalAttempted: analytics.totalAttempted,
+        totalCompleted: analytics.totalCompleted,
+        completionRate: analytics.completionRate,
+        avgScore: analytics.avgScore,
+        highestScore: analytics.highestScore,
+        lowestScore: analytics.lowestScore,
+        medianScore: analytics.medianScore,
+        scoreDistribution: analytics.scoreDistribution,
+        avgTimeToComplete: analytics.avgTimeToComplete,
+        avgAttempts: analytics.avgAttempts,
+        totalSubmissions: analytics.totalSubmissions,
+        acceptedCount: analytics.acceptedCount,
+        partialCount: analytics.partialCount,
+        failedCount: analytics.failedCount,
+        updatedAt: analytics.updatedAt,
+      },
+      problemDifficulties,
+    });
+  } catch (error) {
+    next(error);
+  }
+};

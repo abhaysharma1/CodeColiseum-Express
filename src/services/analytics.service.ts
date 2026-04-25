@@ -1,4 +1,5 @@
 import prisma from "@/utils/prisma";
+import { ExecutionStatus } from "../../generated/prisma/enums";
 
 /**
  * Analytics Service - Helper functions for calculating and updating analytics statistics
@@ -629,5 +630,279 @@ export async function calculateExamAnalytics(examId: string) {
     });
   } catch (error) {
     console.error("Error calculating exam analytics:", error);
+  }
+}
+
+/**
+ * Calculate group-scoped exam analytics
+ * Used for teacher analytics (an exam can be linked to multiple groups)
+ */
+export async function calculateGroupExamAnalytics(examId: string, groupId: string) {
+  try {
+    const groupMemberIds = await prisma.groupMember.findMany({
+      where: { groupId },
+      select: { userId: true },
+    });
+
+    const studentIds = groupMemberIds.map((m) => m.userId);
+    const totalEnrolled = studentIds.length;
+
+    if (studentIds.length === 0) {
+      await prisma.groupExamAnalytics.upsert({
+        where: { groupId_examId: { groupId, examId } },
+        update: {
+          totalEnrolled: 0,
+          totalAttempted: 0,
+          totalCompleted: 0,
+          completionRate: 0,
+          avgScore: 0,
+          highestScore: 0,
+          lowestScore: 0,
+          medianScore: 0,
+          scoreDistribution: {},
+          problemDifficulties: [],
+          avgTimeToComplete: 0,
+          avgAttempts: 0,
+          totalSubmissions: 0,
+          acceptedCount: 0,
+          partialCount: 0,
+          failedCount: 0,
+          updatedAt: new Date(),
+        },
+        create: {
+          groupId,
+          examId,
+          totalEnrolled: 0,
+          totalAttempted: 0,
+          totalCompleted: 0,
+          completionRate: 0,
+          avgScore: 0,
+          highestScore: 0,
+          lowestScore: 0,
+          medianScore: 0,
+          scoreDistribution: {},
+          problemDifficulties: [],
+          avgTimeToComplete: 0,
+          avgAttempts: 0,
+          totalSubmissions: 0,
+          acceptedCount: 0,
+          partialCount: 0,
+          failedCount: 0,
+        },
+      });
+      return;
+    }
+
+    const examProblems = await prisma.examProblem.findMany({
+      where: { examId },
+      select: { problemId: true },
+    });
+    const problemIds = examProblems.map((p) => p.problemId);
+    const problemCount = problemIds.length;
+
+    const examAttempts = await prisma.examAttempt.findMany({
+      where: {
+        examId,
+        studentId: { in: studentIds },
+      },
+      select: {
+        id: true,
+        startedAt: true,
+        submittedAt: true,
+      },
+    });
+
+    const attemptIds = examAttempts.map((a) => a.id);
+    const totalAttempted = examAttempts.length;
+
+    const examResults = await prisma.examResult.findMany({
+      where: {
+        examId,
+        userId: { in: studentIds },
+      },
+      select: { score: true },
+    });
+    const totalCompleted = examResults.length;
+
+    const completionRate =
+      totalAttempted > 0 ? (totalCompleted / totalAttempted) * 100 : 0;
+
+    const scores = examResults.map((r) => r.score);
+    const avgScore = scores.length
+      ? scores.reduce((a, b) => a + b, 0) / scores.length
+      : 0;
+    const highestScore = scores.length ? Math.max(...scores) : 0;
+    const lowestScore = scores.length ? Math.min(...scores) : 0;
+
+    const sortedScores = [...scores].sort((a, b) => a - b);
+    const medianScore =
+      sortedScores.length === 0
+        ? 0
+        : sortedScores.length % 2 === 0
+          ? (sortedScores[sortedScores.length / 2 - 1] +
+              sortedScores[sortedScores.length / 2]) /
+            2
+          : sortedScores[Math.floor(sortedScores.length / 2)];
+
+    const distribution: Record<string, number> = {
+      "0-20": 0,
+      "20-40": 0,
+      "40-60": 0,
+      "60-80": 0,
+      "80-100": 0,
+    };
+
+    scores.forEach((score) => {
+      if (score < 20) distribution["0-20"]++;
+      else if (score < 40) distribution["20-40"]++;
+      else if (score < 60) distribution["40-60"]++;
+      else if (score < 80) distribution["60-80"]++;
+      else distribution["80-100"]++;
+    });
+
+    // Average time to complete (only for submitted attempts)
+    const completedAttempts = examAttempts.filter((a) => a.submittedAt);
+    const avgTimeToComplete = completedAttempts.length
+      ? completedAttempts.reduce((sum, a) => {
+          const mins =
+            (new Date(a.submittedAt as Date).getTime() -
+              new Date(a.startedAt).getTime()) /
+            1000 /
+            60;
+          return sum + Math.max(0, mins);
+        }, 0) / completedAttempts.length
+      : 0;
+
+    // Submission stats (all submissions for group attemptIds)
+    let totalSubmissions = 0;
+    let acceptedCount = 0;
+    let partialCount = 0;
+    let failedCount = 0;
+
+    if (attemptIds.length) {
+      totalSubmissions = await prisma.submission.count({
+        where: { attemptId: { in: attemptIds } },
+      });
+
+      const grouped = await prisma.submission.groupBy({
+        by: ["status"],
+        where: { attemptId: { in: attemptIds } },
+        _count: { status: true },
+      });
+
+      for (const row of grouped) {
+        const c = row._count.status;
+        if (row.status === ExecutionStatus.ACCEPTED) acceptedCount += c;
+        else if (row.status === ExecutionStatus.PARTIAL) partialCount += c;
+        else failedCount += c;
+      }
+    }
+
+    const avgAttempts =
+      totalAttempted > 0 && problemCount > 0
+        ? totalSubmissions / (totalAttempted * problemCount)
+        : 0;
+
+    // Per-problem breakdown from final submissions
+    let finalSubmissions: Array<{
+      attemptId: string;
+      problemId: string;
+      passedTestcases: number;
+      totalTestcases: number;
+    }> = [];
+
+    if (attemptIds.length && problemIds.length) {
+      finalSubmissions = await prisma.submission.findMany({
+        where: {
+          attemptId: { in: attemptIds },
+          problemId: { in: problemIds },
+          isFinal: true,
+        },
+        select: {
+          attemptId: true,
+          problemId: true,
+          passedTestcases: true,
+          totalTestcases: true,
+        },
+      });
+    }
+
+    const finalByAttemptProblem = new Map<string, (typeof finalSubmissions)[number]>();
+    for (const s of finalSubmissions) {
+      finalByAttemptProblem.set(`${s.attemptId}:${s.problemId}`, s);
+    }
+
+    const passScore = 50;
+    const problemDifficulties = problemIds.map((problemId) => {
+      if (totalAttempted === 0) {
+        return { problemId, avgScore: 0, failureRate: 0 };
+      }
+
+      let totalScore = 0;
+      let failed = 0;
+
+      for (const attemptId of attemptIds) {
+        const sub = finalByAttemptProblem.get(`${attemptId}:${problemId}`);
+        const score = sub
+          ? sub.totalTestcases > 0
+            ? Math.round((sub.passedTestcases / sub.totalTestcases) * 100)
+            : 0
+          : 0;
+
+        totalScore += score;
+        if (score < passScore) failed += 1;
+      }
+
+      return {
+        problemId,
+        avgScore: totalScore / totalAttempted,
+        failureRate: (failed / totalAttempted) * 100,
+      };
+    });
+
+    await prisma.groupExamAnalytics.upsert({
+      where: { groupId_examId: { groupId, examId } },
+      update: {
+        totalEnrolled,
+        totalAttempted,
+        totalCompleted,
+        completionRate,
+        avgScore,
+        highestScore,
+        lowestScore,
+        medianScore,
+        scoreDistribution: distribution,
+        problemDifficulties,
+        avgTimeToComplete,
+        avgAttempts,
+        totalSubmissions,
+        acceptedCount,
+        partialCount,
+        failedCount,
+        updatedAt: new Date(),
+      },
+      create: {
+        groupId,
+        examId,
+        totalEnrolled,
+        totalAttempted,
+        totalCompleted,
+        completionRate,
+        avgScore,
+        highestScore,
+        lowestScore,
+        medianScore,
+        scoreDistribution: distribution,
+        problemDifficulties,
+        avgTimeToComplete,
+        avgAttempts,
+        totalSubmissions,
+        acceptedCount,
+        partialCount,
+        failedCount,
+      },
+    });
+  } catch (error) {
+    console.error("Error calculating group exam analytics:", error);
   }
 }

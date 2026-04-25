@@ -6,6 +6,7 @@ import {
   recalculateStudentStats,
   recalculateGroupStats,
   calculateExamAnalytics,
+  calculateGroupExamAnalytics,
 } from "../services/analytics.service";
 
 export async function finalizeExams(
@@ -106,6 +107,11 @@ export async function finalizeExams(
       // 5. Update stats for each group linked to this exam
       for (const examGroup of exam.examGroups) {
         const groupId = examGroup.groupId;
+
+        // Group-scoped exam analytics - non-blocking
+        calculateGroupExamAnalytics(exam.id, groupId).catch((err) =>
+          console.error("Failed to calculate group exam analytics:", err),
+        );
 
         // Fetch all ExamResults for all exams ever linked to this group
         const allGroupExamIds = await prisma.examGroup.findMany({
@@ -247,10 +253,60 @@ export async function finalizeExams(
 
       finalizedExamIds.push(exam.id);
     }
-
+    
     return res.status(200).json({
       message: `Finalized ${finalizedExamIds.length} exam(s)`,
       finalizedExamIds,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function recomputeAnalytics(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    if (req.headers["x-cron-secret"] !== process.env.CRON_SECRET) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const examId = req.body?.examId ? String(req.body.examId) : undefined;
+    const groupId = req.body?.groupId ? String(req.body.groupId) : undefined;
+
+    const examGroups = await prisma.examGroup.findMany({
+      where: {
+        ...(examId ? { examId } : {}),
+        ...(groupId ? { groupId } : {}),
+      },
+      select: { examId: true, groupId: true },
+    });
+
+    if (examGroups.length === 0) {
+      return res.status(200).json({ message: "No matching exam-groups found" });
+    }
+
+    const tasks = examGroups.map(async (eg) => {
+      await calculateGroupExamAnalytics(eg.examId, eg.groupId);
+    });
+
+    await Promise.all(tasks);
+
+    if (examId) {
+      // Keep per-exam analytics consistent too
+      await calculateExamAnalytics(examId);
+    }
+
+    if (groupId) {
+      // Refresh derived group fields (weakest/hardest problem, completion, etc.)
+      await recalculateGroupStats(groupId);
+    }
+
+    return res.status(200).json({
+      message: `Recomputed analytics for ${examGroups.length} exam-group pair(s)` ,
+      count: examGroups.length,
     });
   } catch (error) {
     next(error);
