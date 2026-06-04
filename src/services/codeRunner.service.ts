@@ -8,7 +8,7 @@ import {
   fromRuntimeLanguageId,
   type LanguageKey,
 } from "@/utils/languageCatalog";
-import CacheableLookup from "cacheable-lookup";
+// import CacheableLookup from "cacheable-lookup";
 
 /* ----------------------------- Types ----------------------------- */
 
@@ -333,7 +333,7 @@ export interface RunCodeResponse {
 
 /* ----------------------------- Service ----------------------------- */
 
-const cacheable = new CacheableLookup();
+// const cacheable = new CacheableLookup();
 
 const httpAgent = new http.Agent({
   keepAlive: true,
@@ -341,7 +341,7 @@ const httpAgent = new http.Agent({
   keepAliveMsecs: 1000,
 });
 
-cacheable.install(httpAgent);
+// cacheable.install(httpAgent);
 
 export const piston = axios.create({
   baseURL: process.env.PISTON_URI || "http://piston.internal:2000",
