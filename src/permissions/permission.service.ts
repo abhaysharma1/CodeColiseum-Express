@@ -54,7 +54,7 @@ function normalizePermission(permission: string): string {
 	return permission.trim().toLowerCase();
 }
 
-function getPermissionLookupKeys(permission: string): string[] {
+export function getPermissionLookupKeys(permission: string): string[] {
 	const normalized = normalizePermission(permission);
 	const canonicalEntries = Object.entries(PERMISSION_ALIASES) as Array<
 		[PermissionKey, readonly string[]]
@@ -117,7 +117,7 @@ async function hasOrganizationPermission(): Promise<boolean> {
 	return false;
 }
 
-async function hasGroupPermission(
+export async function hasGroupPermission(
 	userId: string,
 	groupId: string,
 	permissionKeys: string[]

@@ -19,7 +19,7 @@ export async function isTeacher(req:Request, res: Response, next: NextFunction) 
         select: { globalRoleId: true }
     });
 
-    if(dbUser?.globalRoleId !== GLOBAL_ROLE_IDS.ORG_TEACHER){
+    if(dbUser?.globalRoleId !== GLOBAL_ROLE_IDS.ORG_TEACHER && dbUser?.globalRoleId !== GLOBAL_ROLE_IDS.PLATFORM_ADMIN){
         return res.status(403)
     }
 

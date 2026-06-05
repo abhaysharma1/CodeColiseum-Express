@@ -212,6 +212,16 @@ async function seedRoles(permissionIdByKey: Map<string, string>) {
     .map((key) => permissionIdByKey.get(key))
     .filter((value): value is string => Boolean(value));
 
+  const coTeacherPermissionIds = [
+    PERMISSIONS.GROUP_VIEW,
+    PERMISSIONS.GROUP_EDIT,
+    PERMISSIONS.EXAM_CREATE,
+    PERMISSIONS.SUBMISSION_VIEW,
+    PERMISSIONS.ANALYTICS_VIEW
+  ]
+    .map((key) => permissionIdByKey.get(key))
+    .filter((value): value is string => Boolean(value));
+
   const studentPermissionIds = [PERMISSIONS.GROUP_VIEW, PERMISSIONS.SUBMISSION_VIEW]
     .map((key) => permissionIdByKey.get(key))
     .filter((value): value is string => Boolean(value));
@@ -229,7 +239,7 @@ async function seedRoles(permissionIdByKey: Map<string, string>) {
       roleId: ROLE_IDS.GROUP_OWNER,
       permissionId
     })),
-    ...teacherPermissionIds.map((permissionId) => ({
+    ...coTeacherPermissionIds.map((permissionId) => ({
       roleId: ROLE_IDS.GROUP_COTEACHER,
       permissionId
     })),

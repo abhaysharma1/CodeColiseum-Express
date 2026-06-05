@@ -1,7 +1,8 @@
 // ...existing code...
 
 import { PERMISSIONS } from "@/permissions/permission.constants";
-import { hasPermission } from "@/permissions/permission.service";
+import { GLOBAL_ROLE_IDS } from "@/permissions/role.constants";
+import { hasGroupPermission, getPermissionLookupKeys } from "@/permissions/permission.service";
 import prisma from "@/utils/prisma";
 import { NextFunction, Request, Response } from "express";
 
@@ -10,8 +11,16 @@ async function canViewGroupAnalytics(
   groupId: string,
   creatorId: string,
 ): Promise<boolean> {
-  const allowed = await hasPermission(userId, PERMISSIONS.ANALYTICS_VIEW, groupId);
-  return allowed || creatorId === userId;
+  if (creatorId === userId) return true;
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { globalRoleId: true },
+  });
+  if (user?.globalRoleId === GLOBAL_ROLE_IDS.PLATFORM_ADMIN) return true;
+
+  const permissionKeys = getPermissionLookupKeys(PERMISSIONS.ANALYTICS_VIEW);
+  return hasGroupPermission(userId, groupId, permissionKeys);
 }
 
 export const getGroupOverallStats = async (

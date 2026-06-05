@@ -1,6 +1,6 @@
 import { PERMISSIONS } from "@/permissions/permission.constants";
 import { GLOBAL_ROLE_IDS, GROUP_ROLE_IDS } from "@/permissions/role.constants";
-import { hasPermission } from "@/permissions/permission.service";
+import { hasGroupPermission, getPermissionLookupKeys } from "@/permissions/permission.service";
 import prisma from "@/utils/prisma";
 import { sendBatchToSQS } from "@/utils/sqs";
 import { NextFunction, Request, Response } from "express";
@@ -26,9 +26,19 @@ async function canAccessExamWithFallback(
   creatorId: string,
   permission: string,
 ): Promise<boolean> {
+  if (creatorId === userId) return true;
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { globalRoleId: true },
+  });
+  if (user?.globalRoleId === GLOBAL_ROLE_IDS.PLATFORM_ADMIN) return true;
+
   const groupId = await getExamGroupId(examId);
-  const allowed = await hasPermission(userId, permission, groupId);
-  return allowed || creatorId === userId;
+  if (!groupId) return false;
+
+  const permissionKeys = getPermissionLookupKeys(permission);
+  return hasGroupPermission(userId, groupId, permissionKeys);
 }
 
 async function canAccessGroupWithFallback(
@@ -37,8 +47,16 @@ async function canAccessGroupWithFallback(
   creatorId: string,
   permission: string,
 ): Promise<boolean> {
-  const allowed = await hasPermission(userId, permission, groupId);
-  return allowed || creatorId === userId;
+  if (creatorId === userId) return true;
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { globalRoleId: true },
+  });
+  if (user?.globalRoleId === GLOBAL_ROLE_IDS.PLATFORM_ADMIN) return true;
+
+  const permissionKeys = getPermissionLookupKeys(permission);
+  return hasGroupPermission(userId, groupId, permissionKeys);
 }
 
 const DEFAULT_GROUP_MEMBER_ROLE_ID = GROUP_ROLE_IDS.MEMBER;
@@ -236,6 +254,28 @@ export const deleteBulkExams = async (
           .status(403)
           .json({ error: `Access denied for exam ${exam.id}` });
       }
+
+      if (exam.creatorId !== user.id) {
+        const groupId = await getExamGroupId(exam.id);
+        if (groupId) {
+          const membership = await prisma.groupMember.findUnique({
+            where: {
+              groupId_userId: { groupId, userId: user.id },
+            },
+            select: { roleId: true },
+          });
+          if (membership?.roleId !== GROUP_ROLE_IDS.OWNER) {
+            return res.status(403).json({
+              error:
+                "Only the exam creator or group owner can delete exams",
+            });
+          }
+        } else {
+          return res.status(403).json({
+            error: "Only the exam creator can delete this exam",
+          });
+        }
+      }
     }
 
     // Delete all authorized exams (cascade deletes via Prisma)
@@ -283,6 +323,28 @@ export const archiveBulkExams = async (
         return res
           .status(403)
           .json({ error: `Access denied for exam ${exam.id}` });
+      }
+
+      if (exam.creatorId !== user.id) {
+        const groupId = await getExamGroupId(exam.id);
+        if (groupId) {
+          const membership = await prisma.groupMember.findUnique({
+            where: {
+              groupId_userId: { groupId, userId: user.id },
+            },
+            select: { roleId: true },
+          });
+          if (membership?.roleId !== GROUP_ROLE_IDS.OWNER) {
+            return res.status(403).json({
+              error:
+                "Only the exam creator or group owner can archive exams",
+            });
+          }
+        } else {
+          return res.status(403).json({
+            error: "Only the exam creator can archive this exam",
+          });
+        }
       }
     }
 
