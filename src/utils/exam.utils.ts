@@ -147,8 +147,6 @@ export function verifySEB(req: Request) {
   const { browserExamKey, configKey } = getSebConfig();
 
   if (!browserExamKey || !configKey) {
-    console.error("[SEB] Keys not configured");
-
     throw new SEBError("SEB keys are not configured");
   }
 
@@ -158,24 +156,7 @@ export function verifySEB(req: Request) {
 
   const configKeyHash = getHeaderValue(req, "x-safeexambrowser-configkeyhash");
 
-  console.log("[SEB] Incoming request", {
-    method: req.method,
-    protocol: req.protocol,
-    host: req.get("host"),
-    originalUrl: req.originalUrl,
-    forwardedProto: req.get("x-forwarded-proto"),
-    forwardedHost: req.get("x-forwarded-host"),
-    requestUrl,
-    hasRequestHash: !!requestHash,
-    hasConfigKeyHash: !!configKeyHash,
-  });
-
   if (!requestHash || !configKeyHash) {
-    console.warn("[SEB] Missing headers", {
-      requestHashPresent: !!requestHash,
-      configKeyHashPresent: !!configKeyHash,
-    });
-
     throw new SEBError("Missing SEB headers");
   }
 
@@ -190,31 +171,13 @@ export function verifySEB(req: Request) {
     configKeyHash,
   );
 
-  console.log("[SEB] Hash validation", {
-    requestUrl,
-    requestHashValid,
-    configKeyHashValid,
-    expectedRequestHash,
-    receivedRequestHash: requestHash,
-    expectedConfigKeyHash,
-    receivedConfigKeyHash: configKeyHash,
-  });
-
   if (!requestHashValid) {
-    console.error("[SEB] Request hash mismatch");
-
     throw new SEBError("Invalid SEB request hash");
   }
 
   if (!configKeyHashValid) {
-    console.error("[SEB] Config key hash mismatch");
-
     throw new SEBError("Invalid SEB config key hash");
   }
-
-  console.log("[SEB] Validation successful", {
-    requestUrl,
-  });
 }
 
 export function sanitizeSourceCode(code: string): string {
