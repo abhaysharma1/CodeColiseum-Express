@@ -1,5 +1,6 @@
 import http from 'http';
 import app from "./src/app"
+import { loadSebConfig } from '@/config/ssm';
 // import { PrismaClient } from '@prisma/client'; // Uncomment after running prisma generate
 
 const PORT = process.env.PORT || 5000;
@@ -12,6 +13,9 @@ async function startServer() {
     // 1. Database Connection
     // await prisma.$connect();
     console.log('✅ Database connected successfully');
+
+    //load SSM config
+    await loadSebConfig();
 
     // 2. Start Listening
     server.listen(PORT, () => {

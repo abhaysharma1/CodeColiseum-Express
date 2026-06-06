@@ -5,6 +5,7 @@ import { auth } from "./auth";
 import { fromNodeHeaders } from "better-auth/node";
 import crypto from "crypto";
 import { GLOBAL_ROLE_IDS } from "@/permissions/role.constants";
+import { getSebConfig } from "@/config/ssm";
 
 export async function isStudent(req: Request) {
   const session = await auth.api.getSession({
@@ -114,46 +115,58 @@ export class SEBError extends Error {
   }
 }
 
-// export async function verifySEB(req: Request) {
-//   const userAgent = (req.headers["user-agent"] as string) || "";
+function getHeaderValue(req: Request, name: string): string {
+  const value = req.headers[name.toLowerCase()];
 
-//   console.log(req.headers);
+  if (Array.isArray(value)) {
+    return value[0] || "";
+  }
 
-//   if (!/safeexambrowser|\bseb\b/i.test(userAgent)) {
-//     throw new SEBError("Not opened in SEB");
-//   }
+  return value || "";
+}
 
-//   const token = req.cookies["exam-session"];
+function createSebHash(url: string, key: string): string {
+  return crypto
+    .createHash("sha256")
+    .update(url + key)
+    .digest("hex");
+}
 
-//   if (!token) {
-//     throw new Error("No active exam session")
-//   }
+function compareSebHashes(expectedHash: string, receivedHash: string): boolean {
+  if (!receivedHash || expectedHash.length !== receivedHash.length) {
+    return false;
+  }
 
-//   const session = await prisma.examSession.findUnique({
-//     where: { token },
-//   });
-
-//   if (!session) {
-//     throw new Error("Invalid exam session")
-
-//   }
-
-//   if (session.expiresAt < new Date()) {
-//     throw new Error("Exam session expired" )
-
-//   }
-
-//   if (!session.sebVerified) {
-//     throw new Error("SEB verification failed")
-//   }
-
-// }
+  return crypto.timingSafeEqual(
+    Buffer.from(expectedHash),
+    Buffer.from(receivedHash),
+  );
+}
 
 export function verifySEB(req: Request) {
-  const userAgent = (req.headers["user-agent"] as string) || "";
+  const { browserExamKey, configKey } = getSebConfig();
+  const browserKey = browserExamKey;
 
-  if (!/safeexambrowser|\bseb\b/i.test(userAgent)) {
-    throw new SEBError("Not opened in SEB");
+  if (!browserKey || !configKey) {
+    throw new SEBError("SEB keys are not configured");
+  }
+
+  const requestUrl = `${req.protocol}://${req.get("host")}${req.originalUrl}`;
+  const requestHash = getHeaderValue(req, "x-safeexambrowser-requesthash");
+  const configKeyHash = getHeaderValue(req, "x-safeexambrowser-configkeyhash");
+
+  if (!requestHash || !configKeyHash) {
+    throw new SEBError("Missing SEB headers");
+  }
+
+  const expectedRequestHash = createSebHash(requestUrl, browserKey);
+  if (!compareSebHashes(expectedRequestHash, requestHash)) {
+    throw new SEBError("Invalid SEB request hash");
+  }
+
+  const expectedConfigKeyHash = createSebHash(requestUrl, configKey);
+  if (!compareSebHashes(expectedConfigKeyHash, configKeyHash)) {
+    throw new SEBError("Invalid SEB config key hash");
   }
 }
 
@@ -176,17 +189,18 @@ export function sanitizeSourceCode(code: string): string {
   );
 }
 
-const SEB_CONFIG_KEY = process.env.SEB_CONFIG_KEY!; // from your .seb file
+const SEB_CONFIG_KEY = process.env.SEB_CONFIG_KEY || ""; // from your .seb file
 
-export function verifyExamHash(url: string, receivedHash: string): boolean {
-  const expectedHash = crypto
-    .createHash("sha256")
-    .update(url + SEB_CONFIG_KEY)
-    .digest("hex");
+export function verifyExamHash(
+  url: string,
+  receivedHash: string,
+  secret = SEB_CONFIG_KEY,
+): boolean {
+  if (!secret) {
+    return false;
+  }
 
-  // constant time comparison to prevent timing attacks
-  return crypto.timingSafeEqual(
-    Buffer.from(expectedHash),
-    Buffer.from(receivedHash),
-  );
+  const expectedHash = createSebHash(url, secret);
+
+  return compareSebHashes(expectedHash, receivedHash);
 }

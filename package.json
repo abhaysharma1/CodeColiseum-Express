@@ -39,6 +39,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-sqs": "^3.994.0",
+    "@aws-sdk/client-ssm": "^3.1063.0",
     "@google-cloud/tasks": "^6.2.1",
     "@prisma/adapter-pg": "^7.4.0",
     "@prisma/client": "^7.4.0",
