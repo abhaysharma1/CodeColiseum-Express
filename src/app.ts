@@ -20,7 +20,10 @@ const app: Application = express();
 app.use(morgan("dev"));
 
 app.use((req: Request, _res: Response, next: NextFunction) => {
-  console.log(`[Headers] ${req.method} ${req.url}:`, JSON.stringify(req.headers, null, 2));
+  console.log(
+    `[Headers] ${req.method} ${req.url}:`,
+    JSON.stringify(req.headers, null, 2),
+  );
   next();
 });
 
@@ -55,19 +58,13 @@ app.get("/", (req: Request, res: Response) => {
   res.status(200).json({ status: "UP" });
 });
 
-app.use("/teacher", teacherRouter);
-
-app.use("/student", studentRouter);
-
-app.use("/admin", adminRouter);
-
-app.use("/problems", problemRouter);
-
-app.use("/internal", internalRouter);
-
-app.use("/permissions", permissionsRouter);
-
-app.use("/public-auth", publicAuthRouter);
+app.use("/api/teacher", teacherRouter);
+app.use("/api/student", studentRouter);
+app.use("/api/admin", adminRouter);
+app.use("/api/problems", problemRouter);
+app.use("/api/internal", internalRouter);
+app.use("/api/permissions", permissionsRouter);
+app.use("/api/public-auth", publicAuthRouter);
 
 // Notifications API
 app.use("/api/notifications", notificationsRouter);
