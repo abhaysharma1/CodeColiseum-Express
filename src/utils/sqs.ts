@@ -6,35 +6,36 @@ import {
 
 const sqsClient = new SQSClient({
   region: process.env.AWS_REGION!,
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-  },
 });
+
+// credentials: {
+//   accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+//   secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+// },
 
 const AI_REVIEW_QUEUE_URL = process.env.SQS_AI_EVAL_QUEUE_URL;
 const AI_CHAT_QUEUE_URL = process.env.SQS_AI_CHAT_QUEUE_URL;
 const EXAM_EXECUTION_QUEUE_URL = process.env.SQS_EXAM_QUEUE_URL;
 const PRACTICE_EXECUTION_QUEUE_URL = process.env.SQS_PRACTICE_QUEUE_URL;
 
-function ensureSqsConfigured(queueUrl?: string) {
-  if (
-    !process.env.AWS_REGION ||
-    !process.env.AWS_ACCESS_KEY_ID ||
-    !process.env.AWS_SECRET_ACCESS_KEY ||
-    !queueUrl
-  ) {
-    const error = new Error("Missing required SQS configuration");
-    (error as any).statusCode = 500;
-    throw error;
-  }
-}
+// function ensureSqsConfigured(queueUrl?: string) {
+//   if (
+//     !process.env.AWS_REGION ||
+//     !process.env.AWS_ACCESS_KEY_ID ||
+//     !process.env.AWS_SECRET_ACCESS_KEY ||
+//     !queueUrl
+//   ) {
+//     const error = new Error("Missing required SQS configuration");
+//     (error as any).statusCode = 500;
+//     throw error;
+//   }
+// }
 
 async function sendSubmissionMessage(
   queueUrl: string | undefined,
   payload: Record<string, string>,
 ) {
-  ensureSqsConfigured(queueUrl);
+  // ensureSqsConfigured(queueUrl);
 
   await sqsClient.send(
     new SendMessageCommand({
@@ -72,7 +73,7 @@ export async function sendPracticeSubmissionToSQS(submissionId: string) {
  * Max 10 per batch (SQS limitation)
  */
 export async function sendBatchToSQS(submissionIds: string[]) {
-  ensureSqsConfigured(AI_REVIEW_QUEUE_URL);
+  // ensureSqsConfigured(AI_REVIEW_QUEUE_URL);
 
   for (let i = 0; i < submissionIds.length; i += 10) {
     const batch = submissionIds.slice(i, i + 10);
