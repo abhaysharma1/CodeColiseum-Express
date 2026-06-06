@@ -20,7 +20,7 @@ import path from "path";
 const app: Application = express();
 
 app.use(morgan("dev"));
-
+app.set("trust proxy", true);
 
 //Headers Logger
 
