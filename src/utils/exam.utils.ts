@@ -145,29 +145,76 @@ function compareSebHashes(expectedHash: string, receivedHash: string): boolean {
 
 export function verifySEB(req: Request) {
   const { browserExamKey, configKey } = getSebConfig();
-  const browserKey = browserExamKey;
 
-  if (!browserKey || !configKey) {
+  if (!browserExamKey || !configKey) {
+    console.error("[SEB] Keys not configured");
+
     throw new SEBError("SEB keys are not configured");
   }
 
   const requestUrl = `${req.protocol}://${req.get("host")}${req.originalUrl}`;
+
   const requestHash = getHeaderValue(req, "x-safeexambrowser-requesthash");
+
   const configKeyHash = getHeaderValue(req, "x-safeexambrowser-configkeyhash");
 
+  console.log("[SEB] Incoming request", {
+    method: req.method,
+    protocol: req.protocol,
+    host: req.get("host"),
+    originalUrl: req.originalUrl,
+    forwardedProto: req.get("x-forwarded-proto"),
+    forwardedHost: req.get("x-forwarded-host"),
+    requestUrl,
+    hasRequestHash: !!requestHash,
+    hasConfigKeyHash: !!configKeyHash,
+  });
+
   if (!requestHash || !configKeyHash) {
+    console.warn("[SEB] Missing headers", {
+      requestHashPresent: !!requestHash,
+      configKeyHashPresent: !!configKeyHash,
+    });
+
     throw new SEBError("Missing SEB headers");
   }
 
-  const expectedRequestHash = createSebHash(requestUrl, browserKey);
-  if (!compareSebHashes(expectedRequestHash, requestHash)) {
+  const expectedRequestHash = createSebHash(requestUrl, browserExamKey);
+
+  const expectedConfigKeyHash = createSebHash(requestUrl, configKey);
+
+  const requestHashValid = compareSebHashes(expectedRequestHash, requestHash);
+
+  const configKeyHashValid = compareSebHashes(
+    expectedConfigKeyHash,
+    configKeyHash,
+  );
+
+  console.log("[SEB] Hash validation", {
+    requestUrl,
+    requestHashValid,
+    configKeyHashValid,
+    expectedRequestHash,
+    receivedRequestHash: requestHash,
+    expectedConfigKeyHash,
+    receivedConfigKeyHash: configKeyHash,
+  });
+
+  if (!requestHashValid) {
+    console.error("[SEB] Request hash mismatch");
+
     throw new SEBError("Invalid SEB request hash");
   }
 
-  const expectedConfigKeyHash = createSebHash(requestUrl, configKey);
-  if (!compareSebHashes(expectedConfigKeyHash, configKeyHash)) {
+  if (!configKeyHashValid) {
+    console.error("[SEB] Config key hash mismatch");
+
     throw new SEBError("Invalid SEB config key hash");
   }
+
+  console.log("[SEB] Validation successful", {
+    requestUrl,
+  });
 }
 
 export function sanitizeSourceCode(code: string): string {
