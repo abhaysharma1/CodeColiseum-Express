@@ -14,18 +14,23 @@ import permissionsRouter from "@/routes/permissions.route";
 import publicAuthRouter from "@/routes/public.auth.route";
 import notificationsRouter from "@/routes/notifications.route";
 import cookieParser from "cookie-parser";
+import path from "path";
+
 
 const app: Application = express();
 
 app.use(morgan("dev"));
 
-app.use((req: Request, _res: Response, next: NextFunction) => {
-  console.log(
-    `[Headers] ${req.method} ${req.url}:`,
-    JSON.stringify(req.headers, null, 2),
-  );
-  next();
-});
+
+//Headers Logger
+
+// app.use((req: Request, _res: Response, next: NextFunction) => {
+//   console.log(
+//     `[Headers] ${req.method} ${req.url}:`,
+//     JSON.stringify(req.headers, null, 2),
+//   );
+//   next();
+// });
 
 app.use(helmet());
 
@@ -65,6 +70,27 @@ app.use("/api/problems", problemRouter);
 app.use("/api/internal", internalRouter);
 app.use("/api/permissions", permissionsRouter);
 app.use("/api/public-auth", publicAuthRouter);
+
+
+app.get("/api/seb/config", (req, res) => {
+  const filePath = path.join(
+    process.cwd(),
+    "assets",
+    "SEB_File.seb"
+  );
+
+  res.setHeader(
+    "Content-Type",
+    "application/octet-stream"
+  );
+
+  res.setHeader(
+    "Content-Disposition",
+    'attachment; filename="SEB_File.seb"'
+  );
+
+  res.sendFile(filePath);
+});
 
 // Notifications API
 app.use("/api/notifications", notificationsRouter);

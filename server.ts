@@ -1,6 +1,6 @@
-import http from 'http';
-import app from "./src/app"
-import { loadSebConfig } from '@/config/ssm';
+import http from "http";
+import app from "./src/app";
+import { loadSebConfig } from "@/config/ssm";
 // import { PrismaClient } from '@prisma/client'; // Uncomment after running prisma generate
 
 const PORT = process.env.PORT || 5000;
@@ -12,21 +12,23 @@ async function startServer() {
   try {
     // 1. Database Connection
     // await prisma.$connect();
-    console.log('✅ Database connected successfully');
+    console.log("✅ Database connected successfully");
 
     //load SSM config
-    await loadSebConfig();
+    if (process.env.NODE_ENV == "production") {
+      await loadSebConfig();
+    }
 
     // 2. Start Listening
     server.listen(PORT, () => {
       console.log(`
         🚀 Server is running!
         🔉 Listening on port: ${PORT}
-        🌍 Environment: ${process.env.NODE_ENV || 'development'}
+        🌍 Environment: ${process.env.NODE_ENV || "development"}
       `);
     });
   } catch (error) {
-    console.error('❌ Failed to start server:', error);
+    console.error("❌ Failed to start server:", error);
     process.exit(1); // Exit with failure
   }
 }
@@ -37,8 +39,8 @@ async function startServer() {
  */
 
 // Handle unhandled promise rejections (e.g., DB connection issues)
-process.on('unhandledRejection', (err: Error) => {
-  console.error('UNHANDLED REJECTION! 💥 Shutting down...');
+process.on("unhandledRejection", (err: Error) => {
+  console.error("UNHANDLED REJECTION! 💥 Shutting down...");
   console.error(err.name, err.message);
   server.close(() => {
     process.exit(1);
@@ -46,10 +48,10 @@ process.on('unhandledRejection', (err: Error) => {
 });
 
 // Handle SIGTERM (Sent by AWS/Docker for graceful shutdowns)
-process.on('SIGTERM', () => {
-  console.info('SIGTERM received. Shutting down gracefully...');
+process.on("SIGTERM", () => {
+  console.info("SIGTERM received. Shutting down gracefully...");
   server.close(() => {
-    console.log('Process terminated.');
+    console.log("Process terminated.");
     // prisma.$disconnect();
   });
 });
