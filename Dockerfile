@@ -42,6 +42,7 @@ COPY --from=builder --chown=nodeuser:nodejs /app/generated ./generated
 COPY --from=builder --chown=nodeuser:nodejs /app/prisma ./prisma
 COPY --from=builder --chown=nodeuser:nodejs /app/package.json ./package.json
 COPY --from=builder --chown=nodeuser:nodejs /app/prisma.config.ts ./prisma.config.ts
+COPY --from=builder --chown=nodeuser:nodejs /app/assets ./assets
 
 RUN npm install prisma
 
