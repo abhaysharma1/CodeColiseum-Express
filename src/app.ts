@@ -19,6 +19,11 @@ const app: Application = express();
 
 app.use(morgan("dev"));
 
+app.use((req: Request, _res: Response, next: NextFunction) => {
+  console.log(`[Headers] ${req.method} ${req.url}:`, JSON.stringify(req.headers, null, 2));
+  next();
+});
+
 app.use(helmet());
 
 app.use(
