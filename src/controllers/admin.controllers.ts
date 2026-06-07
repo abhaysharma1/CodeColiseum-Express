@@ -257,7 +257,7 @@ const problemTestGeneratorSchema = z.object({
   pattern: z.enum(["RANDOM", "SORTED", "REVERSE", "CONSTANT"]),
   minValue: z.number().int(),
   maxValue: z.number().int(),
-  sizes: z.array(z.number().int().positive()).min(3),
+  sizes: z.array(z.number().int().positive()).min(1),
   timeLimitMs: z.number().int().positive().default(1000),
   memoryLimitMB: z.number().int().positive().default(256),
 });
@@ -521,13 +521,6 @@ export const createUpdateProblemTestGenerator = async (
         .json({ error: "minValue must be less than maxValue" });
     }
 
-    for (let i = 1; i < data.sizes.length; i++) {
-      if (data.sizes[i] <= data.sizes[i - 1]) {
-        return res
-          .status(400)
-          .json({ error: "sizes must be strictly increasing" });
-      }
-    }
 
     const saved = await prisma.problemTestGenerator.upsert({
       where: { problemId: data.problemId },
