@@ -258,7 +258,10 @@ const problemTestGeneratorSchema = z.object({
   minValue: z.number().int(),
   maxValue: z.number().int(),
   sizes: z.array(z.number().int().positive()).min(1),
-  timeLimitMs: z.number().int().positive().default(1000),
+  cppTimeLimitMs: z.number().int().positive().default(1000),
+  javaTimeLimitMs: z.number().int().positive().default(2000),
+  pythonTimeLimitMs: z.number().int().positive().default(4000),
+  jsTimeLimitMs: z.number().int().positive().default(3000),
   memoryLimitMB: z.number().int().positive().default(256),
 });
 
@@ -531,7 +534,10 @@ export const createUpdateProblemTestGenerator = async (
         minValue: data.minValue,
         maxValue: data.maxValue,
         sizes: data.sizes,
-        timeLimitMs: data.timeLimitMs,
+        cppTimeLimitMs: data.cppTimeLimitMs,
+        javaTimeLimitMs: data.javaTimeLimitMs,
+        pythonTimeLimitMs: data.pythonTimeLimitMs,
+        jsTimeLimitMs: data.jsTimeLimitMs,
         memoryLimitMB: data.memoryLimitMB,
       },
       update: {
@@ -540,7 +546,10 @@ export const createUpdateProblemTestGenerator = async (
         minValue: data.minValue,
         maxValue: data.maxValue,
         sizes: data.sizes,
-        timeLimitMs: data.timeLimitMs,
+        cppTimeLimitMs: data.cppTimeLimitMs,
+        javaTimeLimitMs: data.javaTimeLimitMs,
+        pythonTimeLimitMs: data.pythonTimeLimitMs,
+        jsTimeLimitMs: data.jsTimeLimitMs,
         memoryLimitMB: data.memoryLimitMB,
       },
     });
