@@ -15,6 +15,7 @@ import {
   upsertProblem,
   getProblemsForAdmin,
   runReferenceSolution,
+  runtimeAnalyzer,
 } from "@/controllers/admin.controllers";
 import {
   getOrgAnalyticsOverview,
@@ -48,6 +49,9 @@ router.get("/problems/:id", getProblemForEditor);
 router.post("/problems/run-reference-solution", runReferenceSolution);
 router.post("/problems", upsertProblem);
 router.put("/problems/:id", upsertProblem);
+
+// Runtime Analyzer Route
+router.post("/problems/:problemId/runtime-analyzer", runtimeAnalyzer);
 
 // Validation Routes
 router.post("/validate-complexity-cases", validateComplexityCases);

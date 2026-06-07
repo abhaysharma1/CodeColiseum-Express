@@ -19,6 +19,7 @@ import {
   toRuntimeLanguageId,
 } from "@/utils/languageCatalog";
 import { runRawCodeService } from "@/services/runReferenceSolution.service";
+import { analyzeRuntime } from "@/services/runtimeAnalyzer.service";
 
 // Types
 interface JudgeStatus {
@@ -1508,6 +1509,32 @@ export const getProblemsForAdmin = async (req: Request, res: Response, next: Nex
     });
 
     res.status(200).json({ problems });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const runtimeAnalyzerSchema = z.object({
+  language: z.string().trim().min(1),
+  sourceCode: z.string().min(1, "Source code is required"),
+});
+
+export const runtimeAnalyzer = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const parsed = runtimeAnalyzerSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ errors: parsed.error.format() });
+    }
+
+    const { language, sourceCode } = parsed.data;
+    const problemId = req.params.problemId as string;
+
+    if (!problemId) {
+      return res.status(400).json({ error: "Missing problemId in URL" });
+    }
+
+    const result = await analyzeRuntime(req, problemId, language, sourceCode);
+    return res.status(200).json(result);
   } catch (error) {
     next(error);
   }
