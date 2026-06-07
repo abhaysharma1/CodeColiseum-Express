@@ -1,7 +1,6 @@
 import { Router } from "express";
 import { isAdmin } from "@/middleware/isAdmin.middleware";
 import {
-  uploadComplexityCases,
   uploadDriverCode,
   getProblemTestGenerator,
   createUpdateProblemTestGenerator,
@@ -31,7 +30,7 @@ const router = Router();
 router.use(isAdmin);
 
 // Complexity Cases Routes
-router.post("/complexity-cases", uploadComplexityCases);
+// router.post("/complexity-cases", uploadComplexityCases);
 
 // Driver Code Routes
 router.post("/driver-code", uploadDriverCode);

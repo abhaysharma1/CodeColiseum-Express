@@ -123,15 +123,6 @@ model Problem {
   @@index([id, number, title])
 }
 
-enum expectedComplexity {
-  LOGN
-  N
-  NLOGN
-  N2
-  N3
-  EXP
-}
-
 enum problemDifficulty {
   EASY
   MEDIUM
@@ -159,7 +150,6 @@ model TestCase {
 model complexityTestingCases {
   id                 String              @id @default(uuid())
   cases              Json
-  expectedComplexity expectedComplexity?
 
   problem   Problem  @relation(fields: [problemId], references: [id], onDelete: Cascade)
   problemId String   @unique // one-to-one relationship
@@ -242,9 +232,10 @@ model ProblemTestGenerator {
   minValue Int
   maxValue Int
 
-  expectedComplexity expectedComplexity
+  timeLimitMs   Int @default(1000)
+  memoryLimitMB Int @default(256)
 
-  sizes Int[] // e.g. [1000, 2000, 4000, 8000]
+  sizes Int[] // e.g. [1000, 10000, 100000]
 
   createdAt DateTime @default(now())
 

@@ -206,7 +206,7 @@ export type ProblemGroupByOutputType = {
   _max: ProblemMaxAggregateOutputType | null
 }
 
-export type GetProblemGroupByPayload<T extends ProblemGroupByArgs> = Prisma.PrismaPromise<
+type GetProblemGroupByPayload<T extends ProblemGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<ProblemGroupByOutputType, T['by']> &
       {
@@ -3070,11 +3070,6 @@ export type ProblemFindManyArgs<ExtArgs extends runtime.Types.Extensions.Interna
    * Skip the first `n` Problems.
    */
   skip?: number
-  /**
-   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
-   * 
-   * Filter by unique combinations of Problems.
-   */
   distinct?: Prisma.ProblemScalarFieldEnum | Prisma.ProblemScalarFieldEnum[]
 }
 

@@ -192,7 +192,7 @@ export type ExamResultGroupByOutputType = {
   _max: ExamResultMaxAggregateOutputType | null
 }
 
-export type GetExamResultGroupByPayload<T extends ExamResultGroupByArgs> = Prisma.PrismaPromise<
+type GetExamResultGroupByPayload<T extends ExamResultGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<ExamResultGroupByOutputType, T['by']> &
       {
@@ -1286,11 +1286,6 @@ export type ExamResultFindManyArgs<ExtArgs extends runtime.Types.Extensions.Inte
    * Skip the first `n` ExamResults.
    */
   skip?: number
-  /**
-   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
-   * 
-   * Filter by unique combinations of ExamResults.
-   */
   distinct?: Prisma.ExamResultScalarFieldEnum | Prisma.ExamResultScalarFieldEnum[]
 }
 

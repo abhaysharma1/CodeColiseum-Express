@@ -253,7 +253,7 @@ export type SelfSubmissionGroupByOutputType = {
   _max: SelfSubmissionMaxAggregateOutputType | null
 }
 
-export type GetSelfSubmissionGroupByPayload<T extends selfSubmissionGroupByArgs> = Prisma.PrismaPromise<
+type GetSelfSubmissionGroupByPayload<T extends selfSubmissionGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<SelfSubmissionGroupByOutputType, T['by']> &
       {
@@ -1603,11 +1603,6 @@ export type selfSubmissionFindManyArgs<ExtArgs extends runtime.Types.Extensions.
    * Skip the first `n` selfSubmissions.
    */
   skip?: number
-  /**
-   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
-   * 
-   * Filter by unique combinations of selfSubmissions.
-   */
   distinct?: Prisma.SelfSubmissionScalarFieldEnum | Prisma.SelfSubmissionScalarFieldEnum[]
 }
 

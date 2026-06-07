@@ -151,7 +151,7 @@ export type AIRateLimitGroupByOutputType = {
   _max: AIRateLimitMaxAggregateOutputType | null
 }
 
-export type GetAIRateLimitGroupByPayload<T extends AIRateLimitGroupByArgs> = Prisma.PrismaPromise<
+type GetAIRateLimitGroupByPayload<T extends AIRateLimitGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<AIRateLimitGroupByOutputType, T['by']> &
       {
@@ -1207,11 +1207,6 @@ export type AIRateLimitFindManyArgs<ExtArgs extends runtime.Types.Extensions.Int
    * Skip the first `n` AIRateLimits.
    */
   skip?: number
-  /**
-   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
-   * 
-   * Filter by unique combinations of AIRateLimits.
-   */
   distinct?: Prisma.AIRateLimitScalarFieldEnum | Prisma.AIRateLimitScalarFieldEnum[]
 }
 

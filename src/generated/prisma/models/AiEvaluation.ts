@@ -231,7 +231,7 @@ export type AiEvaluationGroupByOutputType = {
   _max: AiEvaluationMaxAggregateOutputType | null
 }
 
-export type GetAiEvaluationGroupByPayload<T extends AiEvaluationGroupByArgs> = Prisma.PrismaPromise<
+type GetAiEvaluationGroupByPayload<T extends AiEvaluationGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<AiEvaluationGroupByOutputType, T['by']> &
       {
@@ -1470,11 +1470,6 @@ export type AiEvaluationFindManyArgs<ExtArgs extends runtime.Types.Extensions.In
    * Skip the first `n` AiEvaluations.
    */
   skip?: number
-  /**
-   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
-   * 
-   * Filter by unique combinations of AiEvaluations.
-   */
   distinct?: Prisma.AiEvaluationScalarFieldEnum | Prisma.AiEvaluationScalarFieldEnum[]
 }
 

@@ -1,7 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import { z } from "zod";
 import {
-  expectedComplexity,
   GeneratorPattern,
   GeneratorType,
   ProgrammingLanguage,
@@ -259,9 +258,8 @@ const problemTestGeneratorSchema = z.object({
   minValue: z.number().int(),
   maxValue: z.number().int(),
   sizes: z.array(z.number().int().positive()).min(3),
-  expectedComplexity: z
-    .enum(["N", "LOGN", "NLOGN", "N2", "N3", "EXP"])
-    .default("N"),
+  timeLimitMs: z.number().int().positive().default(1000),
+  memoryLimitMB: z.number().int().positive().default(256),
 });
 
 const testSchema = z.object({
@@ -395,46 +393,46 @@ const validateComplexitySchema = z.object({
 });
 
 // Upload Complexity Cases
-export const uploadComplexityCases = async (req: Request, res: Response) => {
-  try {
-    const validation = complexityCasesSchema.safeParse(req.body);
-    if (!validation.success) {
-      return res.status(400).json({ error: "Validation Error" });
-    }
+// export const uploadComplexityCases = async (req: Request, res: Response) => {
+//   try {
+//     const validation = complexityCasesSchema.safeParse(req.body);
+//     if (!validation.success) {
+//       return res.status(400).json({ error: "Validation Error" });
+//     }
 
-    const {
-      problemId,
-      expectedComplexity: complexity,
-      cases,
-    } = validation.data;
+//     const {
+//       problemId,
+//       expectedComplexity: complexity,
+//       cases,
+//     } = validation.data;
 
-    const problem = await prisma.problem.findUnique({
-      where: { id: problemId },
-    });
+//     const problem = await prisma.problem.findUnique({
+//       where: { id: problemId },
+//     });
 
-    if (!problem) {
-      return res.status(404).json({ error: "Couldn't find problem" });
-    }
+//     if (!problem) {
+//       return res.status(404).json({ error: "Couldn't find problem" });
+//     }
 
-    // Delete existing complexity cases
-    await prisma.complexityTestingCases.deleteMany({
-      where: { problemId },
-    });
+//     // Delete existing complexity cases
+//     await prisma.complexityTestingCases.deleteMany({
+//       where: { problemId },
+//     });
 
-    const result = await prisma.complexityTestingCases.create({
-      data: {
-        expectedComplexity: complexity as expectedComplexity,
-        cases,
-        problemId,
-      },
-    });
+//     const result = await prisma.complexityTestingCases.create({
+//       data: {
+//         expectedComplexity: complexity as expectedComplexity,
+//         cases,
+//         problemId,
+//       },
+//     });
 
-    res.status(201).json({ success: true, data: result });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Internal Server Error" });
-  }
-};
+//     res.status(201).json({ success: true, data: result });
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ error: "Internal Server Error" });
+//   }
+// };
 
 // Upload Driver Code
 export const uploadDriverCode = async (req: Request, res: Response) => {
@@ -535,25 +533,22 @@ export const createUpdateProblemTestGenerator = async (
       where: { problemId: data.problemId },
       create: {
         problemId: data.problemId,
-        type: GeneratorType.ARRAY,
-        pattern: data.pattern as keyof typeof GeneratorPattern,
+        type: data.type as GeneratorType,
+        pattern: data.pattern as GeneratorPattern,
         minValue: data.minValue,
         maxValue: data.maxValue,
         sizes: data.sizes,
-        expectedComplexity:
-          expectedComplexity[
-            data.expectedComplexity as keyof typeof expectedComplexity
-          ],
+        timeLimitMs: data.timeLimitMs,
+        memoryLimitMB: data.memoryLimitMB,
       },
       update: {
-        pattern: data.pattern as keyof typeof GeneratorPattern,
+        type: data.type as GeneratorType,
+        pattern: data.pattern as GeneratorPattern,
         minValue: data.minValue,
         maxValue: data.maxValue,
         sizes: data.sizes,
-        expectedComplexity:
-          expectedComplexity[
-            data.expectedComplexity as keyof typeof expectedComplexity
-          ],
+        timeLimitMs: data.timeLimitMs,
+        memoryLimitMB: data.memoryLimitMB,
       },
     });
 

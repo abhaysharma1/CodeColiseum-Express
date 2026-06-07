@@ -206,7 +206,7 @@ export type AIMessageGroupByOutputType = {
   _max: AIMessageMaxAggregateOutputType | null
 }
 
-export type GetAIMessageGroupByPayload<T extends AIMessageGroupByArgs> = Prisma.PrismaPromise<
+type GetAIMessageGroupByPayload<T extends AIMessageGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<AIMessageGroupByOutputType, T['by']> &
       {
@@ -1240,11 +1240,6 @@ export type AIMessageFindManyArgs<ExtArgs extends runtime.Types.Extensions.Inter
    * Skip the first `n` AIMessages.
    */
   skip?: number
-  /**
-   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
-   * 
-   * Filter by unique combinations of AIMessages.
-   */
   distinct?: Prisma.AIMessageScalarFieldEnum | Prisma.AIMessageScalarFieldEnum[]
 }
 

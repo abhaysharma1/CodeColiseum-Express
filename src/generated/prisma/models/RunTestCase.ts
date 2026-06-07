@@ -154,7 +154,7 @@ export type RunTestCaseGroupByOutputType = {
   _max: RunTestCaseMaxAggregateOutputType | null
 }
 
-export type GetRunTestCaseGroupByPayload<T extends RunTestCaseGroupByArgs> = Prisma.PrismaPromise<
+type GetRunTestCaseGroupByPayload<T extends RunTestCaseGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<RunTestCaseGroupByOutputType, T['by']> &
       {
@@ -1066,11 +1066,6 @@ export type RunTestCaseFindManyArgs<ExtArgs extends runtime.Types.Extensions.Int
    * Skip the first `n` RunTestCases.
    */
   skip?: number
-  /**
-   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
-   * 
-   * Filter by unique combinations of RunTestCases.
-   */
   distinct?: Prisma.RunTestCaseScalarFieldEnum | Prisma.RunTestCaseScalarFieldEnum[]
 }
 

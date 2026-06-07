@@ -179,7 +179,7 @@ export type DriverCodeGroupByOutputType = {
   _max: DriverCodeMaxAggregateOutputType | null
 }
 
-export type GetDriverCodeGroupByPayload<T extends driverCodeGroupByArgs> = Prisma.PrismaPromise<
+type GetDriverCodeGroupByPayload<T extends driverCodeGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<DriverCodeGroupByOutputType, T['by']> &
       {
@@ -1237,11 +1237,6 @@ export type driverCodeFindManyArgs<ExtArgs extends runtime.Types.Extensions.Inte
    * Skip the first `n` driverCodes.
    */
   skip?: number
-  /**
-   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
-   * 
-   * Filter by unique combinations of driverCodes.
-   */
   distinct?: Prisma.DriverCodeScalarFieldEnum | Prisma.DriverCodeScalarFieldEnum[]
 }
 
