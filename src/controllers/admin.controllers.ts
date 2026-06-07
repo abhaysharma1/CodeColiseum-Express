@@ -562,6 +562,34 @@ export const createUpdateProblemTestGenerator = async (
   }
 };
 
+// Delete Problem Test Generator
+export const deleteProblemTestGenerator = async (req: Request, res: Response) => {
+  try {
+    const { problemId } = req.query;
+
+    if (!problemId || typeof problemId !== "string") {
+      return res.status(400).json({ error: "Missing problemId" });
+    }
+
+    const existing = await prisma.problemTestGenerator.findUnique({
+      where: { problemId },
+    });
+
+    if (!existing) {
+      return res.status(404).json({ error: "No generator found for this problem" });
+    }
+
+    await prisma.problemTestGenerator.delete({
+      where: { problemId },
+    });
+
+    res.status(200).json({ success: true, message: "Generator deleted successfully" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
 // Upload Problems (Bulk)
 export const uploadProblems = async (req: Request, res: Response) => {
   try {

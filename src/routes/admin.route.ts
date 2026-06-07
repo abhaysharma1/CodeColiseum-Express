@@ -16,6 +16,7 @@ import {
   getProblemsForAdmin,
   runReferenceSolution,
   runtimeAnalyzer,
+  deleteProblemTestGenerator,
 } from "@/controllers/admin.controllers";
 import {
   getOrgAnalyticsOverview,
@@ -39,6 +40,7 @@ router.post("/driver-code", uploadDriverCode);
 // Problem Test Generator Routes
 router.get("/problem-test-generator", getProblemTestGenerator);
 router.post("/problem-test-generator", createUpdateProblemTestGenerator);
+router.delete("/problem-test-generator", deleteProblemTestGenerator);
 
 // Upload Problems Route
 router.post("/upload-problems", uploadProblems);
