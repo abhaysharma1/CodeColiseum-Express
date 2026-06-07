@@ -481,8 +481,8 @@ export async function analyzeRuntime(
         });
 
         const run = response.data.run ?? {};
-        const runtimeMs = Math.round((run.cpu_time ?? 0) * 1000);
-        const memoryKb = (run.memory ?? 0) > 0 ? Math.round((run.memory ?? 0) / 1024) : 0;
+        const runtimeMs = Math.round((run.cpu_time ?? 0));
+        const memoryKb = (run.memory ?? 0) > 0 ? Math.round((run.memory ?? 0)) : 0;
 
         return {
           size,
