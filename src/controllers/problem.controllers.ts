@@ -360,7 +360,7 @@ export const getTemplateCode = async (
       return next(error);
     }
 
-    const template = await prisma.driverCode.findUnique({
+    let template = await prisma.driverCode.findUnique({
       where: {
         language_problemId: {
           language: resolvedLanguage,
@@ -374,6 +374,23 @@ export const getTemplateCode = async (
         footer: false,
       },
     });
+
+    if (!template) {
+      template = await prisma.driverCode.findUnique({
+        where: {
+          language_problemId: {
+            language: resolvedLanguage,
+            problemId: "1dc71649-3a7e-4e20-be71-32a7da08388e",
+          },
+        },
+        select: {
+          template: true,
+          language: true,
+          header: false,
+          footer: false,
+        },
+      });
+    }
 
     res.status(200).json(template);
   } catch (error) {
