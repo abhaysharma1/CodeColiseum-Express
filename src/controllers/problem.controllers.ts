@@ -348,17 +348,6 @@ export const getTemplateCode = async (
       return next(error);
     }
 
-    const problem = await prisma.problem.findUnique({
-      where: {
-        id: problemId,
-      },
-    });
-
-    if (!problem) {
-      const error = new Error("Couldn't find Problem");
-      (error as any).status = 404;
-      return next(error);
-    }
 
     let template = await prisma.driverCode.findUnique({
       where: {
