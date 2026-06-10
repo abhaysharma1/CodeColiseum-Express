@@ -156,24 +156,39 @@ export const getProblems = async (
         ? true
         : String(withDescription).toLowerCase() !== "false";
 
-    const where: any = {};
+    const where: any = {
+      number: {
+        not: 0,
+      },
+    };
 
     // Add search conditions
     if (searchValue && String(searchValue).trim() !== "") {
+      const search = String(searchValue).trim();
+      const parsedNumber = Number(search);
+
+      const orConditions: any[] = [
+        { title: { contains: search, mode: "insensitive" } },
+        { id: search },
+      ];
+
       if (includeDescription) {
-        where.OR = [
-          { title: { contains: String(searchValue), mode: "insensitive" } },
-          {
-            description: { contains: String(searchValue), mode: "insensitive" },
+        orConditions.push({
+          description: {
+            contains: search,
+            mode: "insensitive",
           },
-          { id: String(searchValue) },
-        ];
-      } else {
-        where.OR = [
-          { title: { contains: String(searchValue), mode: "insensitive" } },
-          { id: String(searchValue) },
-        ];
+        });
       }
+
+      // Search by problem number if searchValue is a valid number
+      if (!Number.isNaN(parsedNumber)) {
+        orConditions.push({
+          number: parsedNumber,
+        });
+      }
+
+      where.OR = orConditions;
     }
 
     // Add tag filter
@@ -347,7 +362,6 @@ export const getTemplateCode = async (
       (error as any).status = 400;
       return next(error);
     }
-
 
     let template = await prisma.driverCode.findUnique({
       where: {
