@@ -10,11 +10,12 @@ datasource db {
 
 // ===== User & Authentication =====
 model User {
-  id            String   @id @default(uuid())
-  name          String
-  email         String   @unique
-  isOnboarded   Boolean  @default(false)
-  emailVerified Boolean  @default(false)
+  id    String @id @default(uuid())
+  name  String
+  email String @unique()
+
+  isOnboarded   Boolean  @default(true)
+  emailVerified Boolean  @default(true)
   image         String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -41,10 +42,50 @@ model User {
   notifications          Notification[]
   notificationRecipients NotificationRecipient[]
   examSessions           ExamSession[]
+  studentProfile         StudentProfile?
+  teacherProfile         TeacherProfile?
 
   @@index([email])
   @@index([globalRoleId])
   @@map("user")
+}
+
+model StudentProfile {
+  id String @id @default(cuid())
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  rollNumber String
+
+  collegeId String
+  college   College @relation(fields: [collegeId], references: [id], onDelete: Cascade)
+
+  branch   String?
+  semester Int?
+}
+
+model TeacherProfile {
+  id String @id @default(cuid())
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  employeeId String?
+  department String?
+
+  collegeId String
+  college   College @relation(fields: [collegeId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+}
+
+model College {
+  id   String @id @default(cuid())
+  name String
+
+  students StudentProfile[]
+  teachers TeacherProfile[]
 }
 
 model Session {

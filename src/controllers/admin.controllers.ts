@@ -10,7 +10,8 @@ import prisma from "@/utils/prisma";
 import { auth } from "@/utils/auth";
 import axios from "axios";
 import { hashPassword } from "better-auth/crypto";
-import { GLOBAL_ROLE_IDS } from "@/permissions/role.constants";
+import { GLOBAL_ROLE_IDS, GROUP_ROLE_IDS } from "@/permissions/role.constants";
+import XLSX from "xlsx";
 import {
   isSupportedLanguageKey,
   resolveLanguageId,
@@ -20,6 +21,7 @@ import {
 } from "@/utils/languageCatalog";
 import { runRawCodeService } from "@/services/runReferenceSolution.service";
 import { analyzeRuntime } from "@/services/runtimeAnalyzer.service";
+import { C } from "@upstash/redis/zmscore-BjNXmrug";
 
 // Types
 interface JudgeStatus {
@@ -1563,6 +1565,327 @@ export const runtimeAnalyzer = async (req: Request, res: Response, next: NextFun
 
     const result = await analyzeRuntime(req, problemId, language, sourceCode);
     return res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+function generateRandomPassword(length = 12): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789@#$%";
+  const bytes = require("crypto").randomBytes(length);
+  let result = "";
+  for (let i = 0; i < length; i++) {
+    result += chars[bytes[i] % chars.length];
+  }
+  return result;
+}
+
+export const getColleges = async (
+  _req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const colleges = await prisma.college.findMany({
+      orderBy: { name: "asc" },
+    });
+    res.status(200).json(colleges);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const createCollege = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { name } = z
+      .object({ name: z.string().trim().min(1, "College name is required") })
+      .parse(req.body);
+
+    const existing = await prisma.college.findFirst({
+      where: { name },
+    });
+    if (existing) {
+      return res.status(409).json({ error: "College already exists" });
+    }
+
+    const college = await prisma.college.create({ data: { name } });
+    res.status(201).json(college);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const bulkStudentSignUp = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "Excel file is required" });
+    }
+
+    const groupId = req.body.groupId as string | undefined;
+    const collegeId = req.body.collegeId as string | undefined;
+
+    if (!collegeId) {
+      return res.status(400).json({ error: "College selection is required" });
+    }
+
+    const college = await prisma.college.findUnique({
+      where: { id: collegeId },
+    });
+    if (!college) {
+      return res.status(400).json({ error: "Selected college not found" });
+    }
+
+    const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(sheet) as Record<string, unknown>[];
+
+    if (!rows.length) {
+      return res.status(400).json({ error: "Excel file is empty" });
+    }
+
+    const results: Array<{
+      email: string;
+      name: string;
+      password: string;
+      result: "created" | "error";
+      message?: string;
+    }> = [];
+
+    for (const raw of rows) {
+      const name = String(raw.Name ?? "").trim();
+      const email = String(raw.Email ?? "").trim().toLowerCase();
+      const rollNumber = String(raw["Roll Number"] ?? "").trim();
+      const branch = raw.Branch ? String(raw.Branch).trim() : null;
+      const semester = raw.Semester ? Number(raw.Semester) : null;
+
+      if (!name || !email || !rollNumber) {
+        results.push({
+          email: email || "unknown",
+          name: name || "unknown",
+          password: "",
+          result: "error",
+          message: "Missing required fields (Name, Email, Roll Number)",
+        });
+        continue;
+      }
+
+      const password = generateRandomPassword();
+
+      try {
+        await auth.api.signUpEmail({
+          body: { email, password, name } as any,
+          headers: new Headers(),
+        });
+
+        const user = await prisma.user.update({
+          where: { email },
+          data: {
+            emailVerified: true,
+            isOnboarded: true,
+            globalRoleId: GLOBAL_ROLE_IDS.ORG_STUDENT,
+          },
+        });
+
+        await prisma.studentProfile.create({
+          data: {
+            userId: user.id,
+            rollNumber,
+            collegeId: college.id,
+            branch,
+            semester,
+          },
+        });
+
+        if (groupId) {
+          const groupExists = await prisma.group.findUnique({
+            where: { id: groupId },
+          });
+          if (groupExists) {
+            const existingMember = await prisma.groupMember.findUnique({
+              where: { groupId_userId: { groupId, userId: user.id } },
+            });
+            if (!existingMember) {
+              await prisma.groupMember.create({
+                data: {
+                  groupId,
+                  userId: user.id,
+                  roleId: GROUP_ROLE_IDS.MEMBER,
+                },
+              });
+            }
+          }
+        }
+
+        results.push({ email, name, password, result: "created" });
+      } catch (err: any) {
+        results.push({
+          email,
+          name,
+          password: "",
+          result: "error",
+          message:
+            err?.body?.message ?? err?.message ?? "Failed to create account",
+        });
+      }
+    }
+
+    const passwordsCsv = results
+      .filter((r) => r.result === "created")
+      .map((r) => `${r.email},${r.password}`)
+      .join("\n");
+
+    const failed = results.filter((r) => r.result === "error");
+    const statusCode =
+      failed.length === 0 ? 201 : failed.length === results.length ? 400 : 207;
+
+    res.status(statusCode).json({
+      success: failed.length === 0,
+      results,
+      passwordsCsv: `Email,Password\n${passwordsCsv}`,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const bulkTeacherSignUp = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "Excel file is required" });
+    }
+
+    const groupId = req.body.groupId as string | undefined;
+    const collegeId = req.body.collegeId as string | undefined;
+
+    if (!collegeId) {
+      return res.status(400).json({ error: "College selection is required" });
+    }
+
+    const college = await prisma.college.findUnique({
+      where: { id: collegeId },
+    });
+    if (!college) {
+      return res.status(400).json({ error: "Selected college not found" });
+    }
+
+    const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(sheet) as Record<string, unknown>[];
+
+    if (!rows.length) {
+      return res.status(400).json({ error: "Excel file is empty" });
+    }
+
+    const results: Array<{
+      email: string;
+      name: string;
+      password: string;
+      result: "created" | "error";
+      message?: string;
+    }> = [];
+
+    for (const raw of rows) {
+      const name = String(raw.Name ?? "").trim();
+      const email = String(raw.Email ?? "").trim().toLowerCase();
+      const employeeId = String(raw["Employee ID"] ?? "").trim() || null;
+      const department = raw.Department ? String(raw.Department).trim() : null;
+
+      if (!name || !email) {
+        results.push({
+          email: email || "unknown",
+          name: name || "unknown",
+          password: "",
+          result: "error",
+          message: "Missing required fields (Name, Email)",
+        });
+        continue;
+      }
+
+      const password = generateRandomPassword();
+
+      try {
+        await auth.api.signUpEmail({
+          body: { email, password, name } as any,
+          headers: new Headers(),
+        });
+
+        const user = await prisma.user.update({
+          where: { email },
+          data: {
+            emailVerified: true,
+            isOnboarded: true,
+            globalRoleId: GLOBAL_ROLE_IDS.ORG_TEACHER,
+          },
+        });
+
+        await prisma.teacherProfile.create({
+          data: {
+            userId: user.id,
+            employeeId,
+            department,
+            collegeId: college.id,
+          },
+        });
+
+        if (groupId) {
+          const groupExists = await prisma.group.findUnique({
+            where: { id: groupId },
+          });
+          if (groupExists) {
+            const existingMember = await prisma.groupMember.findUnique({
+              where: { groupId_userId: { groupId, userId: user.id } },
+            });
+            if (!existingMember) {
+              await prisma.groupMember.create({
+                data: {
+                  groupId,
+                  userId: user.id,
+                  roleId: GROUP_ROLE_IDS.MEMBER,
+                },
+              });
+            }
+          }
+        }
+
+        results.push({ email, name, password, result: "created" });
+      } catch (err: any) {
+        results.push({
+          email,
+          name,
+          password: "",
+          result: "error",
+          message:
+            err?.body?.message ?? err?.message ?? "Failed to create account",
+        });
+      }
+    }
+
+    const passwordsCsv = results
+      .filter((r) => r.result === "created")
+      .map((r) => `${r.email},${r.password}`)
+      .join("\n");
+
+    const failed = results.filter((r) => r.result === "error");
+    const statusCode =
+      failed.length === 0 ? 201 : failed.length === results.length ? 400 : 207;
+
+    res.status(statusCode).json({
+      success: failed.length === 0,
+      results,
+      passwordsCsv: `Email,Password\n${passwordsCsv}`,
+    });
   } catch (error) {
     next(error);
   }

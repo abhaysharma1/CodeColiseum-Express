@@ -1,4 +1,5 @@
 import { Router } from "express";
+import multer from "multer";
 import { isAdmin } from "@/middleware/isAdmin.middleware";
 import {
   uploadDriverCode,
@@ -9,6 +10,10 @@ import {
   validateProblem,
   bulkSignUp,
   adminSingleSignUp,
+  bulkStudentSignUp,
+  bulkTeacherSignUp,
+  getColleges,
+  createCollege,
   assignUserRoleByEmail,
   resetUserPasswordByEmail,
   getProblemForEditor,
@@ -59,7 +64,13 @@ router.post("/problems/:problemId/runtime-analyzer", runtimeAnalyzer);
 router.post("/validate-complexity-cases", validateComplexityCases);
 router.post("/validate-problem", validateProblem);
 
+const excelUpload = multer({ storage: multer.memoryStorage() });
+
 router.post("/bulkSignup", bulkSignUp);
+router.get("/colleges", getColleges);
+router.post("/colleges", createCollege);
+router.post("/bulk-student-signup", excelUpload.single("file"), bulkStudentSignUp);
+router.post("/bulk-teacher-signup", excelUpload.single("file"), bulkTeacherSignUp);
 router.post("/single-signup", adminSingleSignUp);
 router.patch("/assign-role", assignUserRoleByEmail);
 router.post("/reset-password-by-email", resetUserPasswordByEmail);
