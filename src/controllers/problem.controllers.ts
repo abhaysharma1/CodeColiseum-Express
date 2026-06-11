@@ -2,6 +2,7 @@ import prisma from "../utils/prisma";
 import { NextFunction, Request, Response } from "express";
 import { auth } from "../utils/auth";
 import { fromNodeHeaders } from "better-auth/node";
+import { GLOBAL_ROLE_IDS } from "../permissions/role.constants";
 import { runCodeService, RunCodeRequest } from "../services/codeRunner.service";
 import {
   getPracticeSubmissionStatusService,
@@ -148,6 +149,20 @@ export const getProblems = async (
   next: NextFunction,
 ) => {
   try {
+    // Optional auth: show hidden problems to teachers/admins
+    let isTeacherOrAdmin = false;
+    try {
+      const session = await auth.api.getSession({
+        headers: fromNodeHeaders(req.headers),
+      });
+      const role = session?.user?.globalRoleId;
+      isTeacherOrAdmin =
+        role === GLOBAL_ROLE_IDS.ORG_TEACHER ||
+        role === GLOBAL_ROLE_IDS.PLATFORM_ADMIN;
+    } catch {
+      // No session — treat as public user
+    }
+
     const { searchValue, tags, difficulty, take, skip, withDescription } =
       req.query;
 
@@ -161,6 +176,11 @@ export const getProblems = async (
         not: 0,
       },
     };
+
+    // Hide hidden problems from non-teacher/non-admin users
+    if (!isTeacherOrAdmin) {
+      where.hidden = false;
+    }
 
     // Add search conditions
     if (searchValue && String(searchValue).trim() !== "") {

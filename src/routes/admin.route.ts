@@ -22,6 +22,8 @@ import {
   runReferenceSolution,
   runtimeAnalyzer,
   deleteProblemTestGenerator,
+  toggleProblemHidden,
+  toggleProblemPublish,
 } from "@/controllers/admin.controllers";
 import {
   getOrgAnalyticsOverview,
@@ -59,6 +61,12 @@ router.put("/problems/:id", upsertProblem);
 
 // Runtime Analyzer Route
 router.post("/problems/:problemId/runtime-analyzer", runtimeAnalyzer);
+
+// Toggle Problem Hidden Status
+router.patch("/problems/:id/hidden", toggleProblemHidden);
+
+// Toggle Problem Published Status
+router.patch("/problems/:id/publish", toggleProblemPublish);
 
 // Validation Routes
 router.post("/validate-complexity-cases", validateComplexityCases);

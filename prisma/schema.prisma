@@ -145,6 +145,7 @@ model Problem {
   difficulty  problemDifficulty
   source      String            @default("Unknown")
   isPublished Boolean           @default(false)
+  hidden      Boolean           @default(false)
 
   examProblems           ExamProblem[]
   tags                   ProblemTag[]

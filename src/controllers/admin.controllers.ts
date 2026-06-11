@@ -281,6 +281,7 @@ const problemSchema = z.object({
   tags: z.array(z.string()).optional().default([]),
   publicTests: z.array(testSchema).optional().default([]),
   hiddenTests: z.array(testSchema).optional().default([]),
+  hidden: z.boolean().optional().default(false),
   referenceSolution: z.object({
     language: languageSchema.optional(),
     languageId: z.number().int().optional(),
@@ -325,7 +326,8 @@ const problemEditorSchema = z.object({
     language: languageSchema,
     code: z.string()
   })).default([]),
-  status: z.enum(["DRAFT", "PUBLISHED"]).default("DRAFT")
+  status: z.enum(["DRAFT", "PUBLISHED"]).default("DRAFT"),
+  hidden: z.boolean().optional().default(false)
 });
 
 const bulkSignUpSchema = z.object({
@@ -629,6 +631,7 @@ export const uploadProblems = async (req: Request, res: Response) => {
               description: p.description,
               difficulty: p.difficulty,
               source: p.source ?? "Unknown",
+              hidden: p.hidden,
             },
           });
 
@@ -1328,6 +1331,7 @@ export const getProblemForEditor = async (req: Request, res: Response, next: Nex
       id: problem.id,
       title: problem.title,
       difficulty: problem.difficulty,
+      hidden: problem.hidden,
       tags: problem.tags.map((t) => t.tag.name),
       sections: {
         description,
@@ -1392,6 +1396,7 @@ export const upsertProblem = async (req: Request, res: Response, next: NextFunct
       description: fullDescription,
       difficulty: val.difficulty as any,
       isPublished,
+      hidden: val.hidden,
       runTestCase: {
         create: { cases: publicCasesJson },
       },
@@ -1423,6 +1428,7 @@ export const upsertProblem = async (req: Request, res: Response, next: NextFunct
               description: fullDescription,
               difficulty: val.difficulty as any,
               isPublished,
+              hidden: val.hidden,
               tags: {
                 create: dbTags.map(t => ({ tagId: t.id }))
               },
@@ -1459,6 +1465,7 @@ export const upsertProblem = async (req: Request, res: Response, next: NextFunct
            difficulty: val.difficulty as any,
            number: nextNumber,
            isPublished,
+           hidden: val.hidden,
            tags: {
              create: dbTags.map(t => ({ tagId: t.id }))
            },
@@ -1528,17 +1535,110 @@ export const runReferenceSolution = async (
 
 export const getProblemsForAdmin = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const { searchValue, take, skip } = req.query;
+
+    const where: any = {};
+
+    if (searchValue && String(searchValue).trim() !== "") {
+      const search = String(searchValue).trim();
+      const parsedNumber = Number(search);
+
+      const orConditions: any[] = [
+        { title: { contains: search, mode: "insensitive" } },
+        { id: search },
+      ];
+
+      if (!Number.isNaN(parsedNumber)) {
+        orConditions.push({ number: parsedNumber });
+      }
+
+      where.OR = orConditions;
+    }
+
     const problems = await prisma.problem.findMany({
+      where,
+      take: take ? parseInt(String(take), 10) : undefined,
+      skip: skip ? parseInt(String(skip), 10) : undefined,
       select: {
         id: true,
+        number: true,
         title: true,
         isPublished: true,
         difficulty: true,
+        hidden: true,
       },
       orderBy: { number: 'asc' },
     });
 
     res.status(200).json({ problems });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const toggleHiddenSchema = z.object({
+  hidden: z.boolean(),
+});
+
+export const toggleProblemHidden = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const rawId = req.params.id;
+    const id = Array.isArray(rawId) ? rawId[0] : rawId;
+
+    if (!id) {
+      return res.status(400).json({ message: "Problem id is required" });
+    }
+
+    const body = toggleHiddenSchema.safeParse(req.body);
+    if (!body.success) {
+      return res.status(400).json({ errors: body.error.format() });
+    }
+
+    const existing = await prisma.problem.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ message: "Problem not found" });
+    }
+
+    await prisma.problem.update({
+      where: { id },
+      data: { hidden: body.data.hidden },
+    });
+
+    return res.status(200).json({ message: "Updated successfully" });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const togglePublishSchema = z.object({
+  isPublished: z.boolean(),
+});
+
+export const toggleProblemPublish = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const rawId = req.params.id;
+    const id = Array.isArray(rawId) ? rawId[0] : rawId;
+
+    if (!id) {
+      return res.status(400).json({ message: "Problem id is required" });
+    }
+
+    const body = togglePublishSchema.safeParse(req.body);
+    if (!body.success) {
+      return res.status(400).json({ errors: body.error.format() });
+    }
+
+    const existing = await prisma.problem.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ message: "Problem not found" });
+    }
+
+    await prisma.problem.update({
+      where: { id },
+      data: { isPublished: body.data.isPublished },
+    });
+
+    return res.status(200).json({ message: "Updated successfully" });
   } catch (error) {
     next(error);
   }
