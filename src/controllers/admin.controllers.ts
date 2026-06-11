@@ -295,12 +295,7 @@ const problemEditorSchema = z.object({
   title: z.string().min(1, "Title is required").max(300),
   difficulty: z.enum(["EASY", "MEDIUM", "HARD"]).default("MEDIUM"),
   tags: z.array(z.string()).default([]),
-  sections: z.object({
-    description: z.string().optional().default(""),
-    constraints: z.string().optional().default(""),
-    inputFormat: z.string().optional().default(""),
-    outputFormat: z.string().optional().default(""),
-  }),
+  description: z.string().optional().default(""),
   testCases: z.object({
     public: z.array(z.object({
       id: z.string(),
@@ -1284,34 +1279,7 @@ export const getProblemForEditor = async (req: Request, res: Response, next: Nex
       return res.status(404).json({ message: "Problem not found" });
     }
 
-    // Attempt to reconstruct sections from markdown
-    // Format assumption: ## Description\n\n...\n\n## Constraints\n\n...\n\n## Input Format\n\n...\n\n## Output Format\n\n...
-    let description = problem.description;
-    let constraints = "";
-    let inputFormat = "";
-    let outputFormat = "";
-
-    const descSplit = description.split(/## Constraints/i);
-    if (descSplit.length > 1) {
-      description = descSplit[0].replace(/## Description/i, "").trim();
-      const afterDesc = ("## Constraints\n\n" + descSplit[1]);
-      
-      const constraintSplit = afterDesc.split(/## Input Format/i);
-      if (constraintSplit.length > 1) {
-        constraints = constraintSplit[0].replace(/## Constraints/i, "").trim();
-        const afterConstr = ("## Input Format\n\n" + constraintSplit[1]);
-        
-        const inputSplit = afterConstr.split(/## Output Format/i);
-        if (inputSplit.length > 1) {
-          inputFormat = inputSplit[0].replace(/## Input Format/i, "").trim();
-          outputFormat = inputSplit[1].replace(/## Output Format/i, "").trim();
-        } else {
-          inputFormat = afterConstr.replace(/## Input Format/i, "").trim();
-        }
-      } else {
-        constraints = afterDesc.replace(/## Constraints/i, "").trim();
-      }
-    }
+    const description = problem.description;
 
     // Format driverCode mapping
     const driverCodeResult: any = {};
@@ -1333,12 +1301,7 @@ export const getProblemForEditor = async (req: Request, res: Response, next: Nex
       difficulty: problem.difficulty,
       hidden: problem.hidden,
       tags: problem.tags.map((t) => t.tag.name),
-      sections: {
-        description,
-        constraints,
-        inputFormat,
-        outputFormat
-      },
+      description,
       testCases: {
         public: publicTests.map((t: any, idx) => ({ id: t.id || `pub-${idx}`, input: t.input, output: t.output })),
         hidden: hiddenTests.map((t: any, idx) => ({ id: t.id || `hid-${idx}`, input: t.input, output: t.output }))
@@ -1363,9 +1326,10 @@ export const upsertProblem = async (req: Request, res: Response, next: NextFunct
       return res.status(400).json({ errors: bodyResult.error.format() });
     }
 
+
     const val = bodyResult.data;
 
-    const fullDescription = `## Description\n\n${val.sections.description.trim()}\n\n## Constraints\n\n${val.sections.constraints.trim()}\n\n## Input Format\n\n${val.sections.inputFormat.trim()}\n\n## Output Format\n\n${val.sections.outputFormat.trim()}`;
+    const fullDescription = val.description.trim();
 
     const isPublished = val.status === "PUBLISHED";
 
