@@ -993,7 +993,828 @@ All endpoints require Admin role.
 - Exam routes can enforce Safe Exam Browser when `sebEnabled = true` via `x-safeexambrowser-configkeyhash`.
 - AI endpoints depend on group AI settings, exam state, and an async worker pipeline (AWS SQS queue + worker).
 
-## 14. Source of Truth
+---
+
+## 14. Lab Management APIs
+
+### Overview
+
+Lab Management introduces a modular lab structure with assessments tied to the existing Exam system. Labs are created by teachers, assigned to groups, and contain weekly modules with problems. Modules can have an assessment exam linked or created inline.
+
+### Permission Constants
+
+| Permission | Key |
+|---|---|
+| `LAB_VIEW` | `lab:view` |
+| `LAB_EDIT` | `lab:edit` |
+| `LAB_CREATE` | `lab:create` |
+| `LAB_DELETE` | `lab:delete` |
+| `LAB_ASSIGN` | `lab:assign` |
+
+**Note:** Assessment endpoints reuse existing `EXAM_CREATE`, `EXAM_EDIT`, and `ANALYTICS_VIEW` permissions.
+
+### Teacher Lab Routes (`/api/teacher`)
+
+All endpoints require `isTeacher` middleware + `requirePermission`.
+
+#### 14.1 Create Lab
+
+```http
+POST /api/teacher/labs
+Permission: lab:create
+```
+
+Request:
+```json
+{
+  "title": "Data Structures Lab",
+  "description": "Weekly DSA practice sessions"
+}
+```
+
+Response `201`:
+```json
+{
+  "id": "uuid",
+  "title": "Data Structures Lab",
+  "description": "Weekly DSA practice sessions",
+  "creatorId": "user-uuid",
+  "createdAt": "2026-06-12T00:00:00.000Z",
+  "updatedAt": "2026-06-12T00:00:00.000Z"
+}
+```
+
+---
+
+#### 14.2 List Labs
+
+```http
+GET /api/teacher/labs?take=10&skip=0
+Permission: lab:view
+```
+
+Returns only labs created by the authenticated teacher.
+
+Response `200`:
+```json
+{
+  "data": [
+    {
+      "id": "uuid",
+      "title": "Data Structures Lab",
+      "description": "...",
+      "creatorId": "user-uuid",
+      "createdAt": "...",
+      "updatedAt": "...",
+      "modulesCount": 5
+    }
+  ],
+  "pagination": {
+    "take": 10,
+    "skip": 0,
+    "total": 1,
+    "pages": 1
+  }
+}
+```
+
+---
+
+#### 14.3 Get Lab
+
+```http
+GET /api/teacher/labs/:labId
+Permission: lab:view
+```
+
+Response `200`:
+```json
+{
+  "id": "uuid",
+  "title": "Data Structures Lab",
+  "description": "...",
+  "creatorId": "user-uuid",
+  "createdAt": "...",
+  "updatedAt": "...",
+  "modulesCount": 5
+}
+```
+
+`404` if not found or not owned by teacher.
+
+---
+
+#### 14.4 Update Lab
+
+```http
+PATCH /api/teacher/labs/:labId
+Permission: lab:edit
+```
+
+Request (all fields optional):
+```json
+{
+  "title": "Updated Title",
+  "description": "Updated description"
+}
+```
+
+Response `200`:
+```json
+{
+  "id": "uuid",
+  "title": "Updated Title",
+  "description": "Updated description",
+  "creatorId": "user-uuid",
+  "createdAt": "...",
+  "updatedAt": "..."
+}
+```
+
+---
+
+#### 14.5 Delete Lab
+
+```http
+DELETE /api/teacher/labs/:labId
+Permission: lab:delete
+```
+
+Hard deletes the lab and cascades to modules, assignments, and progress records.
+
+Response `200`:
+```json
+{
+  "success": true,
+  "message": "Lab deleted"
+}
+```
+
+---
+
+#### 14.6 Assign Lab to Groups
+
+```http
+POST /api/teacher/labs/:labId/assign
+Permission: lab:assign
+```
+
+Request:
+```json
+{
+  "groupIds": ["group-uuid-1", "group-uuid-2"]
+}
+```
+
+Skips duplicates silently.
+
+Response `200`:
+```json
+{
+  "labId": "uuid",
+  "assignedGroups": [
+    { "groupId": "group-uuid-1", "groupName": "CSE-A" },
+    { "groupId": "group-uuid-2", "groupName": "CSE-B" }
+  ],
+  "totalAssigned": 2
+}
+```
+
+Groups not found → `400`.
+
+---
+
+#### 14.7 Create Module
+
+```http
+POST /api/teacher/labs/:labId/modules
+Permission: lab:edit
+```
+
+Request:
+```json
+{
+  "title": "Week 1 - Arrays",
+  "description": "Basic array problems",
+  "weekNumber": 1,
+  "orderIndex": 0,
+  "unlockAt": "2026-06-15T00:00:00.000Z",
+  "dueAt": "2026-06-22T00:00:00.000Z",
+  "assessmentExamId": "optional-exam-uuid"
+}
+```
+
+Validation:
+- `weekNumber` must be unique within the lab (`409` on conflict)
+- `unlockAt` must be before `dueAt` (if both provided)
+
+Response `201`:
+```json
+{
+  "id": "module-uuid",
+  "title": "Week 1 - Arrays",
+  "description": "Basic array problems",
+  "labId": "lab-uuid",
+  "weekNumber": 1,
+  "orderIndex": 0,
+  "unlockAt": "2026-06-15T00:00:00.000Z",
+  "dueAt": "2026-06-22T00:00:00.000Z",
+  "assessmentExamId": null,
+  "createdAt": "...",
+  "updatedAt": "..."
+}
+```
+
+---
+
+#### 14.8 List Modules
+
+```http
+GET /api/teacher/labs/:labId/modules
+Permission: lab:view
+```
+
+Response `200`:
+```json
+[
+  {
+    "id": "module-uuid",
+    "title": "Week 1 - Arrays",
+    "labId": "lab-uuid",
+    "weekNumber": 1,
+    "orderIndex": 0,
+    "unlockAt": "...",
+    "dueAt": "...",
+    "assessmentExamId": null,
+    "createdAt": "...",
+    "updatedAt": "...",
+    "problemsCount": 3
+  }
+]
+```
+
+Ordered by `orderIndex` asc, then `weekNumber` asc.
+
+---
+
+#### 14.9 Get Module
+
+```http
+GET /api/teacher/modules/:moduleId
+Permission: lab:view
+```
+
+Response `200`:
+```json
+{
+  "id": "module-uuid",
+  "title": "Week 1 - Arrays",
+  "labId": "lab-uuid",
+  "weekNumber": 1,
+  "orderIndex": 0,
+  "unlockAt": "...",
+  "dueAt": "...",
+  "assessmentExamId": null,
+  "createdAt": "...",
+  "updatedAt": "...",
+  "problemsCount": 3
+}
+```
+
+---
+
+#### 14.10 Update Module
+
+```http
+PATCH /api/teacher/modules/:moduleId
+Permission: lab:edit
+```
+
+Request (all fields optional):
+```json
+{
+  "title": "Updated Week Title",
+  "weekNumber": 2,
+  "unlockAt": "2026-06-16T00:00:00.000Z",
+  "dueAt": null
+}
+```
+
+Changing `weekNumber` checks uniqueness within the lab.
+
+Response `200`: updated module object.
+
+---
+
+#### 14.11 Delete Module
+
+```http
+DELETE /api/teacher/modules/:moduleId
+Permission: lab:edit
+```
+
+Cascades to module problems and their progress records.
+
+Response `200`:
+```json
+{
+  "success": true,
+  "message": "Module deleted"
+}
+```
+
+---
+
+#### 14.12 Add Problems to Module
+
+```http
+POST /api/teacher/modules/:moduleId/problems
+Permission: lab:edit
+```
+
+Request:
+```json
+{
+  "problemIds": ["problem-uuid-1", "problem-uuid-2"]
+}
+```
+
+Skips duplicates. Validates all problems exist.
+
+Response `200`:
+```json
+{
+  "moduleId": "module-uuid",
+  "addedCount": 2
+}
+```
+
+---
+
+#### 14.13 List Module Problems
+
+```http
+GET /api/teacher/modules/:moduleId/problems
+Permission: lab:view
+```
+
+Response `200`:
+```json
+[
+  {
+    "id": "module-problem-uuid",
+    "moduleId": "module-uuid",
+    "problemId": "problem-uuid-1",
+    "orderIndex": 0,
+    "problem": {
+      "id": "problem-uuid-1",
+      "number": 101,
+      "title": "Two Sum",
+      "difficulty": "EASY"
+    }
+  }
+]
+```
+
+Ordered by `orderIndex` asc.
+
+---
+
+#### 14.14 Remove Problem from Module
+
+```http
+DELETE /api/teacher/module-problems/:moduleProblemId
+Permission: lab:edit
+```
+
+Response `200`:
+```json
+{
+  "success": true,
+  "message": "Problem removed from module"
+}
+```
+
+---
+
+### Assessment APIs
+
+#### 14.15 Assign Existing Exam to Module
+
+```http
+POST /api/teacher/modules/:moduleId/assessment
+Permission: lab:edit
+```
+
+Request:
+```json
+{
+  "examId": "exam-uuid"
+}
+```
+
+Validates:
+- Module exists and teacher owns the lab
+- Exam exists and teacher owns the exam
+
+Response `200`:
+```json
+{
+  "moduleId": "module-uuid",
+  "assessmentExamId": "exam-uuid"
+}
+```
+
+---
+
+#### 14.16 Update Assessment
+
+```http
+PATCH /api/teacher/modules/:moduleId/assessment
+Permission: lab:edit
+```
+
+Request:
+```json
+{
+  "examId": "new-exam-uuid"
+}
+```
+
+Replaces the existing assessment exam ID. Same validation as assign.
+
+Response `200`:
+```json
+{
+  "moduleId": "module-uuid",
+  "assessmentExamId": "new-exam-uuid"
+}
+```
+
+`400` if no assessment is currently set.
+
+---
+
+#### 14.17 Remove Assessment
+
+```http
+DELETE /api/teacher/modules/:moduleId/assessment
+Permission: lab:edit
+```
+
+Sets `assessmentExamId` to `null`. Does **not** delete the Exam.
+
+Response `200`:
+```json
+{
+  "success": true,
+  "message": "Assessment removed from module"
+}
+```
+
+---
+
+#### 14.18 Get Assessment
+
+```http
+GET /api/teacher/modules/:moduleId/assessment
+Permission: lab:view
+```
+
+Response `200`:
+```json
+{
+  "examId": "exam-uuid",
+  "title": "Week 1 Assessment",
+  "startTime": "2026-06-15T00:00:00.000Z",
+  "endTime": "2026-06-22T00:00:00.000Z",
+  "durationMinutes": 60,
+  "status": "UPCOMING"
+}
+```
+
+`status` is computed from dates:
+| Condition | Status |
+|---|---|
+| `now < startTime` | `UPCOMING` |
+| `now > endTime` | `COMPLETED` |
+| otherwise | `ACTIVE` |
+
+---
+
+#### 14.19 Create Assessment (One-Click)
+
+```http
+POST /api/teacher/modules/:moduleId/create-assessment
+Permission: lab:edit
+```
+
+Creates a new Exam, links it to all groups the lab is assigned to, and sets `assessmentExamId` on the module — all in one transaction.
+
+Request:
+```json
+{
+  "title": "Week 1 - Arrays Assessment",
+  "durationMin": 45
+}
+```
+
+Both fields optional. Defaults:
+- `title`: `"{module.title} - Assessment"`
+- `durationMin`: `60`
+- `startDate`: `module.unlockAt` or `now`
+- `endDate`: `module.dueAt` or `now + 7 days`
+
+Response `201`:
+```json
+{
+  "moduleId": "module-uuid",
+  "assessmentExamId": "new-exam-uuid",
+  "exam": {
+    "id": "new-exam-uuid",
+    "title": "Week 1 - Arrays Assessment",
+    "description": "Assessment for Week 1 - Arrays",
+    "isPublished": false,
+    "creatorId": "user-uuid",
+    "startDate": "...",
+    "endDate": "...",
+    "durationMin": 45,
+    "sebEnabled": false,
+    "status": "scheduled"
+  }
+}
+```
+
+The exam is created as **unpublished draft** so the teacher can add problems and configure before publishing.
+
+---
+
+### Analytics APIs
+
+#### 14.20 Assessment Results
+
+```http
+GET /api/teacher/modules/:moduleId/assessment-results
+Permission: analytics:view
+```
+
+Reuses existing `ExamAttempt` infrastructure.
+
+Response `200`:
+```json
+{
+  "totalStudents": 120,
+  "attemptedStudents": 100,
+  "averageScore": 72.5,
+  "highestScore": 100,
+  "lowestScore": 12
+}
+```
+
+`404` if no assessment is linked.
+
+---
+
+#### 14.21 Student Progress
+
+```http
+GET /api/teacher/modules/:moduleId/student-progress
+Permission: analytics:view
+```
+
+Per-student progress across all module problems.
+
+Response `200`:
+```json
+[
+  {
+    "studentId": "user-uuid",
+    "studentName": "John Doe",
+    "solvedProblems": 5,
+    "totalProblems": 10,
+    "completionPercentage": 50
+  }
+]
+```
+
+---
+
+#### 14.22 Problem Analytics
+
+```http
+GET /api/teacher/modules/:moduleId/problem-analytics
+Permission: analytics:view
+```
+
+Per-problem analytics across all students.
+
+Response `200`:
+```json
+[
+  {
+    "problemId": "problem-uuid",
+    "problemNumber": 101,
+    "problemTitle": "Two Sum",
+    "attemptedStudents": 50,
+    "solvedStudents": 35,
+    "solveRate": 70,
+    "averageAttempts": 2.4
+  }
+]
+```
+
+---
+
+### Student Lab Routes (`/api/student`)
+
+All endpoints require `isStudent` middleware.
+
+#### 14.23 Get My Labs
+
+```http
+GET /api/student/my-labs
+```
+
+Returns only labs assigned to the student's groups. Locked modules (where `unlockAt > now`) are excluded.
+
+Response `200`:
+```json
+[
+  {
+    "id": "lab-uuid",
+    "title": "Data Structures Lab",
+    "description": "...",
+    "modulesCount": 3,
+    "modules": [
+      {
+        "id": "module-uuid",
+        "title": "Week 1 - Arrays",
+        "weekNumber": 1,
+        "orderIndex": 0,
+        "unlockAt": "2026-06-15T00:00:00.000Z",
+        "dueAt": "2026-06-22T00:00:00.000Z",
+        "problemsCount": 3,
+        "completedProblems": 2,
+        "totalProblems": 3,
+        "completionPercentage": 67,
+        "moduleStatus": "IN_PROGRESS",
+        "progress": [
+          {
+            "moduleProblemId": "mp-uuid",
+            "attemptCount": 3,
+            "isSolved": true,
+            "lastAttemptAt": "2026-06-16T10:00:00.000Z"
+          }
+        ],
+        "assessment": {
+          "examId": "exam-uuid",
+          "title": "Week 1 Assessment",
+          "startTime": "...",
+          "status": "UPCOMING"
+        }
+      }
+    ]
+  }
+]
+```
+
+`moduleStatus` values:
+| Condition | Status |
+|---|---|
+| `unlockAt > now` | `LOCKED` |
+| All problems solved + assessment attempted (if exists) | `COMPLETED` |
+| Some progress | `IN_PROGRESS` |
+| No progress | `NOT_STARTED` |
+
+---
+
+#### 14.24 Get My Lab
+
+```http
+GET /api/student/my-labs/:labId
+```
+
+Same structure as `getMyLabs` but for a single lab. `404` if not assigned to student.
+
+---
+
+#### 14.25 Get Module Problems (Student)
+
+```http
+GET /api/student/modules/:moduleId/problems
+```
+
+Includes problem data and student's progress for each problem. `403` if module is locked.
+
+Response `200`:
+```json
+{
+  "module": {
+    "id": "module-uuid",
+    "title": "Week 1 - Arrays",
+    "weekNumber": 1,
+    "unlockAt": "...",
+    "dueAt": "...",
+    "assessmentExamId": "exam-uuid"
+  },
+  "completedProblems": 2,
+  "totalProblems": 3,
+  "completionPercentage": 67,
+  "assessment": {
+    "examId": "exam-uuid",
+    "title": "Week 1 Assessment",
+    "startTime": "...",
+    "status": "UPCOMING"
+  },
+  "problems": [
+    {
+      "id": "mp-uuid",
+      "moduleId": "module-uuid",
+      "problemId": "problem-uuid",
+      "orderIndex": 0,
+      "problem": {
+        "id": "problem-uuid",
+        "number": 101,
+        "title": "Two Sum",
+        "difficulty": "EASY"
+      },
+      "progress": {
+        "attemptCount": 3,
+        "isSolved": true,
+        "lastAttemptAt": "..."
+      }
+    }
+  ]
+}
+```
+
+---
+
+#### 14.26 Get Module Progress
+
+```http
+GET /api/student/modules/:moduleId/progress
+```
+
+Response `200`:
+```json
+{
+  "problems": [
+    {
+      "moduleProblemId": "mp-uuid",
+      "attemptCount": 3,
+      "isSolved": true,
+      "lastAttemptAt": "2026-06-16T10:00:00.000Z"
+    }
+  ]
+}
+```
+
+---
+
+#### 14.27 Get Module Assessment (Student)
+
+```http
+GET /api/student/modules/:moduleId/assessment
+```
+
+Response `200`:
+```json
+{
+  "examId": "exam-uuid",
+  "title": "Week 1 Assessment",
+  "startTime": "2026-06-15T00:00:00.000Z",
+  "endTime": "2026-06-22T00:00:00.000Z",
+  "durationMinutes": 60,
+  "status": "UPCOMING"
+}
+```
+
+---
+
+### Submission Integration
+
+When a **practice** (`selfSubmission`) or **exam** (`Submission`) reaches a terminal status via the polling endpoints:
+
+- `GET /api/problems/submission-status/:submissionId`
+- `GET /api/student/exam/submission-status/:submissionId`
+
+The system automatically checks if the problem belongs to a `ModuleProblem`. If it does, `ModuleProblemProgress` is upserted idempotently:
+
+| Behaviour | Detail |
+|---|---|
+| **attemptCount** | Incremented by 1 (first attempt = 1) |
+| **latestSubmissionId** | Set to current submission ID |
+| **lastAttemptAt** | Updated to now |
+| **isSolved** | Set to `true` only if status is `ACCEPTED` and not already solved |
+| **solvedAt** | Set on first solve |
+| **bestSubmissionId** | Set on first solve |
+
+The update is **idempotent**: if `latestSubmissionId` already matches, the upsert is skipped. Uses `prisma.$transaction` for atomicity.
+
+---
+
+## 15. Source of Truth
 
 This document was generated from the route and controller implementation in:
 
@@ -1003,3 +1824,10 @@ This document was generated from the route and controller implementation in:
 - `src/services/codeRunner.service.ts`
 - `src/services/problemSubmission.service.ts`
 - `src/services/codeSubmission.service.ts`
+- `src/services/lab.service.ts`
+- `src/controllers/lab.teacher.controllers.ts`
+- `src/controllers/lab.student.controllers.ts`
+- `src/routes/lab.teacher.route.ts`
+- `src/routes/lab.student.route.ts`
+- `src/validations/lab.schema.ts`
+- `src/types/lab.types.ts`
