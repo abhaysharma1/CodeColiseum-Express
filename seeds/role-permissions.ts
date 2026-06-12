@@ -207,7 +207,12 @@ async function seedRoles(permissionIdByKey: Map<string, string>) {
     PERMISSIONS.EXAM_PUBLISH,
     PERMISSIONS.SUBMISSION_VIEW,
     PERMISSIONS.SUBMISSION_GRADE,
-    PERMISSIONS.ANALYTICS_VIEW
+    PERMISSIONS.ANALYTICS_VIEW,
+    PERMISSIONS.LAB_VIEW,
+    PERMISSIONS.LAB_EDIT,
+    PERMISSIONS.LAB_CREATE,
+    PERMISSIONS.LAB_DELETE,
+    PERMISSIONS.LAB_ASSIGN
   ]
     .map((key) => permissionIdByKey.get(key))
     .filter((value): value is string => Boolean(value));
@@ -217,7 +222,8 @@ async function seedRoles(permissionIdByKey: Map<string, string>) {
     PERMISSIONS.GROUP_EDIT,
     PERMISSIONS.EXAM_CREATE,
     PERMISSIONS.SUBMISSION_VIEW,
-    PERMISSIONS.ANALYTICS_VIEW
+    PERMISSIONS.ANALYTICS_VIEW,
+    PERMISSIONS.LAB_VIEW
   ]
     .map((key) => permissionIdByKey.get(key))
     .filter((value): value is string => Boolean(value));
