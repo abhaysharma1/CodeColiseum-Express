@@ -9,6 +9,7 @@ import {
 import { ExecutionStatus } from "../../generated/prisma/enums";
 import { fromRuntimeLanguageId, getLanguageLabel } from "@/utils/languageCatalog";
 import { sendExamSubmissionToSQS } from "@/utils/sqs";
+import { upsertModuleProblemProgress } from "@/services/lab.service";
 
 export interface SubmitCodeRequest {
   examId: string;
@@ -129,6 +130,7 @@ export async function getExamSubmissionStatusService(
       executionTime: true,
       memory: true,
       stderr: true,
+      problemId: true,
     },
   });
 
@@ -142,6 +144,16 @@ export async function getExamSubmissionStatusService(
     const error = new Error("Forbidden");
     (error as any).status = 403;
     throw error;
+  }
+
+  // Update module problem progress if this problem belongs to a lab module
+  if (submission.problemId && submission.userId) {
+    upsertModuleProblemProgress(
+      submission.userId,
+      submission.problemId,
+      submission.id,
+      submission.status,
+    ).catch((err) => console.error("Failed to update module progress:", err));
   }
 
   const score = calculateScore(submission.passedTestcases, submission.totalTestcases);

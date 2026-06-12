@@ -7,7 +7,12 @@ export const PERMISSIONS = {
 	EXAM_PUBLISH: "exam:publish",
 	SUBMISSION_VIEW: "submission:view",
 	SUBMISSION_GRADE: "submission:grade",
-	ANALYTICS_VIEW: "analytics:view"
+	ANALYTICS_VIEW: "analytics:view",
+	LAB_VIEW: "lab:view",
+	LAB_EDIT: "lab:edit",
+	LAB_CREATE: "lab:create",
+	LAB_DELETE: "lab:delete",
+	LAB_ASSIGN: "lab:assign"
 } as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -21,5 +26,10 @@ export const PERMISSION_ALIASES: Record<PermissionKey, readonly string[]> = {
 	[PERMISSIONS.EXAM_PUBLISH]: ["PUBLISH_EXAM"],
 	[PERMISSIONS.SUBMISSION_VIEW]: ["VIEW_SUBMISSION"],
 	[PERMISSIONS.SUBMISSION_GRADE]: ["GRADE_SUBMISSION"],
-	[PERMISSIONS.ANALYTICS_VIEW]: ["VIEW_ANALYTICS"]
+	[PERMISSIONS.ANALYTICS_VIEW]: ["VIEW_ANALYTICS"],
+	[PERMISSIONS.LAB_VIEW]: ["LAB_VIEW"],
+	[PERMISSIONS.LAB_EDIT]: ["LAB_EDIT"],
+	[PERMISSIONS.LAB_CREATE]: ["LAB_CREATE"],
+	[PERMISSIONS.LAB_DELETE]: ["LAB_DELETE"],
+	[PERMISSIONS.LAB_ASSIGN]: ["LAB_ASSIGN"]
 };

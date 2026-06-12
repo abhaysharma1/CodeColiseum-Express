@@ -13,6 +13,8 @@ import internalRouter from "@/routes/internal.routes";
 import permissionsRouter from "@/routes/permissions.route";
 import publicAuthRouter from "@/routes/public.auth.route";
 import notificationsRouter from "@/routes/notifications.route";
+import labTeacherRouter from "@/routes/lab.teacher.route";
+import labStudentRouter from "@/routes/lab.student.route";
 import cookieParser from "cookie-parser";
 import path from "path";
 
@@ -66,7 +68,9 @@ app.get("/", (req: Request, res: Response) => {
 });
 
 app.use("/api/teacher", teacherRouter);
+app.use("/api/teacher", labTeacherRouter);
 app.use("/api/student", studentRouter);
+app.use("/api/student", labStudentRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/problems", problemRouter);
 app.use("/api/internal", internalRouter);

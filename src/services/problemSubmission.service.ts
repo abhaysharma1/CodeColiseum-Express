@@ -14,6 +14,7 @@ import {
   TerminalResponse,
   SubmissionStatusResponse,
 } from "@/types/submission.types";
+import { upsertModuleProblemProgress } from "@/services/lab.service";
 
 export interface SubmitCodeRequest {
   questionId: string;
@@ -150,6 +151,8 @@ export async function getPracticeSubmissionStatusService(
       memory: true,
       stderr: true,
       createdAt: true,
+      userId: true,
+      problemId: true,
     },
   });
 
@@ -158,6 +161,14 @@ export async function getPracticeSubmissionStatusService(
     (error as any).status = 404;
     throw error;
   }
+
+  // Update module problem progress if this problem belongs to a lab module
+  upsertModuleProblemProgress(
+    submission.userId,
+    submission.problemId,
+    submission.id,
+    submission.status,
+  ).catch((err) => console.error("Failed to update module progress:", err));
 
   return {
     success: true,

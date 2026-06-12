@@ -45,6 +45,9 @@ model User {
   studentProfile         StudentProfile?
   teacherProfile         TeacherProfile?
 
+  createdLabs            Lab[]            @relation("CreatedLabs")
+  labProgress            ModuleProblemProgress[]
+
   @@index([email])
   @@index([globalRoleId])
   @@map("user")
@@ -161,6 +164,7 @@ model Problem {
   airateLimits           AIRateLimit[]
   groupProblemStats      GroupProblemStats[]
   studentProblemStats    StudentProblemStats[]
+  moduleProblems         ModuleProblem[]
 
   @@index([id, number, title])
 }
@@ -535,6 +539,7 @@ model Group {
   groupProblemStats   GroupProblemStats[]
   studentProblemStats StudentProblemStats[]
   groupExamAnalytics  GroupExamAnalytics[]
+  labAssignments      LabAssignment[]
 
   @@index([creatorId])
 }
@@ -964,6 +969,105 @@ model GroupExamAnalytics {
   @@index([examId])
   @@index([updatedAt])
   @@index([groupId, updatedAt])
+}
+
+// ===== Lab Management =====
+
+model Lab {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+
+  creatorId String
+  creator   User   @relation("CreatedLabs", fields: [creatorId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assignments LabAssignment[]
+  modules     LabModule[]
+
+  @@index([creatorId])
+}
+
+model LabAssignment {
+  id    String   @id @default(uuid())
+  labId String
+  lab   Lab      @relation(fields: [labId], references: [id], onDelete: Cascade)
+
+  groupId String
+  group   Group  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  assignedAt DateTime @default(now())
+
+  @@unique([labId, groupId])
+  @@index([labId])
+  @@index([groupId])
+}
+
+model LabModule {
+  id        String  @id @default(uuid())
+  title     String
+  description String?
+
+  labId String
+  lab   Lab   @relation(fields: [labId], references: [id], onDelete: Cascade)
+
+  weekNumber       Int
+  orderIndex       Int?
+  unlockAt         DateTime?
+  dueAt            DateTime?
+  assessmentExamId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  problems ModuleProblem[]
+
+  @@unique([labId, weekNumber])
+  @@index([labId])
+}
+
+model ModuleProblem {
+  id        String @id @default(uuid())
+  moduleId  String
+  module    LabModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  problemId String
+  problem   Problem   @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
+  orderIndex Int?
+
+  createdAt DateTime @default(now())
+
+  progress ModuleProblemProgress[]
+
+  @@unique([moduleId, problemId])
+  @@index([moduleId])
+  @@index([problemId])
+}
+
+model ModuleProblemProgress {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  moduleProblemId String
+  moduleProblem   ModuleProblem @relation(fields: [moduleProblemId], references: [id], onDelete: Cascade)
+
+  attemptCount       Int       @default(0)
+  isSolved           Boolean   @default(false)
+  solvedAt           DateTime?
+  latestSubmissionId String?
+  bestSubmissionId   String?
+  lastAttemptAt      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, moduleProblemId])
+  @@index([userId])
+  @@index([moduleProblemId])
 }
 
 // ===== Notification System =====
