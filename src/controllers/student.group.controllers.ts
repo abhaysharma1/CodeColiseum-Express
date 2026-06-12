@@ -12,7 +12,6 @@ export async function getAllGroups(
 
     const { take, skip, searchValue, groupType } = req.query;
 
-
     let where: any = {};
 
     where.members = {
@@ -119,6 +118,7 @@ export async function getGroupExams(
     if (searchValue == "") {
       groupExams = await prisma.exam.findMany({
         where: {
+          isPublished: true,
           examGroups: {
             some: {
               groupId: groupData.id,
@@ -135,6 +135,7 @@ export async function getGroupExams(
       groupExams = await prisma.exam.findMany({
         where: {
           title: { contains: String(searchValue), mode: "insensitive" },
+          isPublished: true,
           examGroups: {
             some: {
               groupId: groupData.id,
