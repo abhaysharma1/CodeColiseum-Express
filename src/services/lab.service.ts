@@ -18,10 +18,7 @@ export async function getLabAssignments(labId: string) {
   }));
 }
 
-export async function getTeacherLabOrThrow(
-  userId: string,
-  labId: string,
-) {
+export async function getTeacherLabOrThrow(userId: string, labId: string) {
   const lab = await prisma.lab.findUnique({ where: { id: labId } });
   if (!lab) {
     const err = new Error("Lab not found");
@@ -97,7 +94,9 @@ export async function getStudentLabIds(userId: string): Promise<string[]> {
     where: { groupId: { in: groupIds } },
     select: { labId: true },
   });
-  return [...new Set<string>(assignments.map((a: { labId: string }) => a.labId))];
+  return [
+    ...new Set<string>(assignments.map((a: { labId: string }) => a.labId)),
+  ];
 }
 
 export function computeExamStatus(
@@ -174,17 +173,19 @@ export async function computeModuleStatus(
     where: { moduleId },
   });
 
-  const solvedCount = totalProblems > 0
-    ? await prisma.moduleProblemProgress.count({
-        where: {
-          moduleProblem: { moduleId },
-          userId,
-          isSolved: true,
-        },
-      })
-    : 0;
+  const solvedCount =
+    totalProblems > 0
+      ? await prisma.moduleProblemProgress.count({
+          where: {
+            moduleProblem: { moduleId },
+            userId,
+            isSolved: true,
+          },
+        })
+      : 0;
 
-  const allProblemsSolved = totalProblems === 0 || solvedCount === totalProblems;
+  const allProblemsSolved =
+    totalProblems === 0 || solvedCount === totalProblems;
 
   if (assessmentExamId) {
     const attempt = await prisma.examAttempt.findUnique({
@@ -223,7 +224,9 @@ export async function getModuleProblemProgress(
   return progress;
 }
 
-export async function getModuleProblemAnalytics(moduleId: string): Promise<ProblemAnalyticsEntry[]> {
+export async function getModuleProblemAnalytics(
+  moduleId: string,
+): Promise<ProblemAnalyticsEntry[]> {
   const moduleProblems = await prisma.moduleProblem.findMany({
     where: { moduleId },
     include: {
@@ -256,12 +259,14 @@ export async function getModuleProblemAnalytics(moduleId: string): Promise<Probl
       problemTitle: mp.problem.title,
       attemptedStudents: attemptedCount,
       solvedStudents: solvedStudents.size,
-      solveRate: attemptedCount > 0
-        ? Math.round((solvedStudents.size / attemptedCount) * 100)
-        : 0,
-      averageAttempts: attemptedCount > 0
-        ? Math.round((totalAttempts / attemptedCount) * 10) / 10
-        : 0,
+      solveRate:
+        attemptedCount > 0
+          ? Math.round((solvedStudents.size / attemptedCount) * 100)
+          : 0,
+      averageAttempts:
+        attemptedCount > 0
+          ? Math.round((totalAttempts / attemptedCount) * 10) / 10
+          : 0,
     };
   });
 }
@@ -275,15 +280,23 @@ export async function getModuleStudentProgress(
   if (totalProblems === 0) return [];
 
   const progress = await prisma.moduleProblemProgress.findMany({
-    where: { moduleProblem: { moduleId } },
-    include: { user: { select: { id: true, name: true } } },
+    where: {
+      moduleProblem: {
+        moduleId,
+      },
+    },
     select: {
       userId: true,
       isSolved: true,
-      user: { select: { id: true, name: true } },
+      user: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
     },
   });
-
+  
   const studentMap = new Map<string, { name: string; solved: number }>();
   for (const p of progress) {
     if (!studentMap.has(p.userId)) {
@@ -303,7 +316,9 @@ export async function getModuleStudentProgress(
   }));
 }
 
-export async function getAssessmentResults(moduleId: string): Promise<AssessmentResultsDTO> {
+export async function getAssessmentResults(
+  moduleId: string,
+): Promise<AssessmentResultsDTO> {
   const module = await prisma.labModule.findUnique({
     where: { id: moduleId },
     select: { assessmentExamId: true },
@@ -334,9 +349,14 @@ export async function getAssessmentResults(moduleId: string): Promise<Assessment
   return {
     totalStudents,
     attemptedStudents,
-    averageScore: scores.length > 0
-      ? Math.round((scores.reduce((a: number, b: number) => a + b, 0) / scores.length) * 10) / 10
-      : 0,
+    averageScore:
+      scores.length > 0
+        ? Math.round(
+            (scores.reduce((a: number, b: number) => a + b, 0) /
+              scores.length) *
+              10,
+          ) / 10
+        : 0,
     highestScore: scores.length > 0 ? Math.max(...scores) : 0,
     lowestScore: scores.length > 0 ? Math.min(...scores) : 0,
   };
