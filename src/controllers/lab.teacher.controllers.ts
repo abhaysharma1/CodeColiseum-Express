@@ -16,6 +16,7 @@ import {
   getTeacherModuleProblemOrThrow,
   getAssessmentOrThrow,
   toAssessmentDTO,
+  getLabAssignments as getLabAssignmentsService,
   getModuleProblemAnalytics as getModuleProblemAnalyticsService,
   getModuleStudentProgress as getModuleStudentProgressService,
   getAssessmentResults as getAssessmentResultsService,
@@ -151,6 +152,22 @@ export const deleteLab = async (
     await prisma.lab.delete({ where: { id: labId } });
 
     res.status(200).json({ success: true, message: "Lab deleted" });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getLabAssignments = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const user = req.user!;
+    const labId = req.params.labId as string;
+    await getTeacherLabOrThrow(user.id, labId);
+    const assignedGroups = await getLabAssignmentsService(labId);
+    res.status(200).json(assignedGroups);
   } catch (error) {
     next(error);
   }

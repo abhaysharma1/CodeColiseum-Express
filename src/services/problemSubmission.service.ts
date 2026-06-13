@@ -20,6 +20,7 @@ export interface SubmitCodeRequest {
   questionId: string;
   languageId?: number;
   code: string;
+  moduleProblemId?: string;
 }
 
 export interface SubmitCodeQueuedResponse {
@@ -38,7 +39,7 @@ export interface PracticeSubmissionStatusResponse {
 
 export async function submitCodeService(
   req: Request,
-  { questionId, languageId, code }: SubmitCodeRequest,
+  { questionId, languageId, code, moduleProblemId }: SubmitCodeRequest,
 ): Promise<SubmitCodeQueuedResponse> {
   const normalizedLanguage = fromRuntimeLanguageId(languageId);
 
@@ -93,6 +94,7 @@ export async function submitCodeService(
 export async function getPracticeSubmissionStatusService(
   req: Request,
   submissionId: string,
+  moduleProblemId?: string,
 ): Promise<SubmissionStatusResponse> {
   if (!submissionId) {
     const error = new Error("submissionId is required");
@@ -168,6 +170,7 @@ export async function getPracticeSubmissionStatusService(
     submission.problemId,
     submission.id,
     submission.status,
+    moduleProblemId,
   ).catch((err) => console.error("Failed to update module progress:", err));
 
   return {

@@ -11,7 +11,8 @@ export async function isTeacher(req:Request, res: Response, next: NextFunction) 
     })
 
     if(!user){
-        return res.status(401)
+        res.status(401).json({ message: "Unauthorized" });
+        return;
     }
 
     const dbUser = await prisma.user.findUnique({
@@ -20,7 +21,8 @@ export async function isTeacher(req:Request, res: Response, next: NextFunction) 
     });
 
     if(dbUser?.globalRoleId !== GLOBAL_ROLE_IDS.ORG_TEACHER && dbUser?.globalRoleId !== GLOBAL_ROLE_IDS.PLATFORM_ADMIN){
-        return res.status(403)
+        res.status(403).json({ message: "Forbidden" });
+        return;
     }
 
     req.user = user.user;

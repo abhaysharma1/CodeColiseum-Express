@@ -7,6 +7,17 @@ import type {
   StudentProgressEntry,
 } from "@/types/lab.types";
 
+export async function getLabAssignments(labId: string) {
+  const assignments = await prisma.labAssignment.findMany({
+    where: { labId },
+    include: { group: { select: { id: true, name: true } } },
+  });
+  return assignments.map((a: any) => ({
+    groupId: a.group.id,
+    groupName: a.group.name,
+  }));
+}
+
 export async function getTeacherLabOrThrow(
   userId: string,
   labId: string,
@@ -336,10 +347,18 @@ export async function upsertModuleProblemProgress(
   problemId: string,
   submissionId: string,
   status: string,
+  moduleProblemId?: string,
 ) {
-  const moduleProblem = await prisma.moduleProblem.findFirst({
-    where: { problemId },
-  });
+  let moduleProblem;
+  if (moduleProblemId) {
+    moduleProblem = await prisma.moduleProblem.findUnique({
+      where: { id: moduleProblemId },
+    });
+  } else {
+    moduleProblem = await prisma.moduleProblem.findFirst({
+      where: { problemId },
+    });
+  }
   if (!moduleProblem) return;
 
   const isAccepted = status === "ACCEPTED";

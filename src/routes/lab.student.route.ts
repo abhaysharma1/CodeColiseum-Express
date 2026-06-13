@@ -6,6 +6,7 @@ import {
   getModuleProblems,
   getModuleProgress,
   getModuleAssessment,
+  getModuleProblem,
 } from "@/controllers/lab.student.controllers";
 
 const router = Router();
@@ -17,5 +18,6 @@ router.get("/my-labs/:labId", getMyLab);
 router.get("/modules/:moduleId/problems", getModuleProblems);
 router.get("/modules/:moduleId/progress", getModuleProgress);
 router.get("/modules/:moduleId/assessment", getModuleAssessment);
+router.get("/module-problems/:moduleProblemId", getModuleProblem);
 
 export default router;

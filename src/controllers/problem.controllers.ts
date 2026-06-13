@@ -466,7 +466,7 @@ export const submitCode = async (
   next: NextFunction,
 ) => {
   try {
-    const { questionId, language, languageId, code } = req.body;
+    const { questionId, language, languageId, code, moduleProblemId } = req.body;
     const resolvedLanguageId = resolveLanguageId({
       language,
       languageId,
@@ -488,6 +488,7 @@ export const submitCode = async (
       questionId,
       languageId: resolvedLanguageId,
       code,
+      moduleProblemId,
     };
 
     const result = await submitCodeService(req, requestData);
@@ -507,6 +508,7 @@ export const getSubmissionStatus = async (
     const submissionId = Array.isArray(rawSubmissionId)
       ? rawSubmissionId[0]
       : rawSubmissionId;
+    const moduleProblemId = req.query.moduleProblemId as string | undefined;
 
     if (!submissionId) {
       const error = new Error("submissionId is required");
@@ -514,7 +516,11 @@ export const getSubmissionStatus = async (
       return next(error);
     }
 
-    const result = await getPracticeSubmissionStatusService(req, submissionId);
+    const result = await getPracticeSubmissionStatusService(
+      req,
+      submissionId,
+      moduleProblemId,
+    );
     res.status(200).json(result);
   } catch (error) {
     next(error);

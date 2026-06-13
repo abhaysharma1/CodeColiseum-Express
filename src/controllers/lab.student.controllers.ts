@@ -350,3 +350,98 @@ export const getModuleAssessment = async (
     next(error);
   }
 };
+
+export const getModuleProblem = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const user = req.user!;
+    const moduleProblemId = req.params.moduleProblemId as string;
+    const labIds = await getStudentLabIds(user.id);
+
+    const moduleProblem = await prisma.moduleProblem.findUnique({
+      where: { id: moduleProblemId },
+      include: {
+        module: {
+          include: { lab: { select: { id: true, title: true, description: true } } },
+        },
+        problem: { select: { id: true } },
+      },
+    });
+
+    if (!moduleProblem) {
+      return res.status(404).json({ success: false, message: "ModuleProblem not found" });
+    }
+
+    if (!labIds.includes(moduleProblem.module.lab.id)) {
+      return res.status(403).json({ success: false, message: "Forbidden" });
+    }
+
+    if (moduleProblem.module.unlockAt && moduleProblem.module.unlockAt > new Date()) {
+      return res.status(403).json({ success: false, message: "Module is locked" });
+    }
+
+    const progress = await prisma.moduleProblemProgress.findUnique({
+      where: {
+        userId_moduleProblemId: {
+          userId: user.id,
+          moduleProblemId,
+        },
+      },
+    });
+
+    const allModuleProblems = await prisma.moduleProblem.findMany({
+      where: { moduleId: moduleProblem.moduleId },
+      orderBy: { orderIndex: "asc" },
+      select: { id: true, problemId: true, orderIndex: true },
+    });
+
+    const currentIndex = allModuleProblems.findIndex(
+      (mp: any) => mp.id === moduleProblemId,
+    );
+
+    const previousProblem = currentIndex > 0 ? allModuleProblems[currentIndex - 1] : null;
+    const nextProblem =
+      currentIndex < allModuleProblems.length - 1
+        ? allModuleProblems[currentIndex + 1]
+        : null;
+
+    res.status(200).json({
+      moduleProblem: {
+        id: moduleProblem.id,
+        moduleId: moduleProblem.moduleId,
+        problemId: moduleProblem.problemId,
+        orderIndex: moduleProblem.orderIndex,
+      },
+      module: {
+        id: moduleProblem.module.id,
+        title: moduleProblem.module.title,
+        description: moduleProblem.module.description,
+        weekNumber: moduleProblem.module.weekNumber,
+        orderIndex: moduleProblem.module.orderIndex,
+        unlockAt: moduleProblem.module.unlockAt,
+        dueAt: moduleProblem.module.dueAt,
+        assessmentExamId: moduleProblem.module.assessmentExamId,
+      },
+      lab: {
+        id: moduleProblem.module.lab.id,
+        title: moduleProblem.module.lab.title,
+        description: moduleProblem.module.lab.description,
+      },
+      progress: progress
+        ? {
+            attemptCount: progress.attemptCount,
+            isSolved: progress.isSolved,
+            solvedAt: progress.solvedAt,
+            lastAttemptAt: progress.lastAttemptAt,
+          }
+        : null,
+      previousProblem,
+      nextProblem,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
