@@ -68,12 +68,20 @@ export const fetchAllExams = async (
 ) => {
   try {
     const user = req.user;
-    const take = Number(req.query.take) ?? 10;
-    const skip = Number(req.query.skip) ?? 0;
-    const searchValue = String(req.query.searchvalue) ?? "";
-    const statusFilter = req.query.status ? String(req.query.status) : null;
-    const dateFromStr = req.query.dateFrom ? String(req.query.dateFrom) : null;
-    const dateToStr = req.query.dateTo ? String(req.query.dateTo) : null;
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(
+      100,
+      Math.max(1, Number(req.query.limit) || Number(req.query.take) || 12),
+    );
+    const searchValue = String(
+      req.query.search || req.query.searchvalue || "",
+    );
+    const statusFilter = String(
+      req.query.status || req.query.status || "ALL",
+    ).toUpperCase();
+    const sort = String(req.query.sort || "newest");
+
+    const now = new Date();
 
     // Build where clause
     const whereClause: any = {};
@@ -86,38 +94,59 @@ export const fetchAllExams = async (
       ];
     }
 
-    // Status filter
-    if (statusFilter) {
-      if (statusFilter === "published") {
-        whereClause.isPublished = true;
-      } else if (statusFilter === "draft") {
+    // Status filter with date derivation
+    switch (statusFilter) {
+      case "DRAFT":
         whereClause.isPublished = false;
-      } else if (statusFilter === "active" || statusFilter === "archived") {
-        whereClause.status = statusFilter.toUpperCase();
-      }
+        break;
+      case "SCHEDULED":
+        whereClause.isPublished = true;
+        whereClause.startDate = { gt: now };
+        break;
+      case "ACTIVE":
+        whereClause.isPublished = true;
+        whereClause.startDate = { lte: now };
+        whereClause.endDate = { gte: now };
+        break;
+      case "COMPLETED":
+        whereClause.isPublished = true;
+        whereClause.endDate = { lt: now };
+        break;
+      default:
+        break;
     }
 
-    // Date range filter
-    if (dateFromStr || dateToStr) {
-      whereClause.startDate = {};
-      if (dateFromStr) {
-        whereClause.startDate.gte = new Date(dateFromStr);
-      }
-      if (dateToStr) {
-        whereClause.startDate.lte = new Date(dateToStr);
-      }
+    // Build orderBy
+    let orderBy: any;
+    switch (sort) {
+      case "oldest":
+        orderBy = { createdAt: "asc" };
+        break;
+      case "title_asc":
+        orderBy = { title: "asc" };
+        break;
+      case "title_desc":
+        orderBy = { title: "desc" };
+        break;
+      default:
+        orderBy = { createdAt: "desc" };
+        break;
     }
 
     const exams = await prisma.exam.findMany({
       where: whereClause,
-      orderBy: { endDate: "desc" },
+      orderBy,
       include: {
         _count: {
-          select: { enrollments: true },
+          select: { problems: true },
+        },
+        creator: {
+          select: { id: true, name: true, email: true },
         },
       },
     });
 
+    // Filter by authorization
     const authorizedExams: (typeof exams)[0][] = [];
     for (const exam of exams) {
       if (
@@ -132,41 +161,180 @@ export const fetchAllExams = async (
       }
     }
 
-    const paginatedExams = authorizedExams.slice(skip, skip + take);
+    const totalCount = authorizedExams.length;
+    const skip = (page - 1) * limit;
+    const paginatedExams = authorizedExams.slice(skip, skip + limit);
 
-    // Enhance with additional metrics
-    const enricedExams = await Promise.all(
-      paginatedExams.map(async (exam) => {
-        // Get exam attempts for this exam
-        const attempts = await prisma.examAttempt.findMany({
-          where: {
-            examId: exam.id,
-          },
-          select: { totalScore: true, status: true },
-        });
-
-        // Calculate passing percentage (attempts with totalScore >= 60%)
-        const passingCount = attempts.filter((a) => a.totalScore >= 60).length;
-        const passingPercentage =
-          attempts.length > 0 ? (passingCount / attempts.length) * 100 : 0;
-
-        // Get the last submission date
-        const lastAttempt = await prisma.examAttempt.findFirst({
-          where: { examId: exam.id },
-          select: { submittedAt: true },
-          orderBy: { submittedAt: "desc" },
-        });
-
-        return {
-          ...exam,
-          studentCount: exam._count.enrollments,
-          passingPercentage: Math.round(passingPercentage * 100) / 100,
-          lastSubmittedDate: lastAttempt?.submittedAt,
-        };
+    // Batch compute passing percentages and student counts
+    const examIds = paginatedExams.map((e) => e.id);
+    const [allAttempts, examGroups] = await Promise.all([
+      prisma.examAttempt.findMany({
+        where: { examId: { in: examIds } },
+        select: { examId: true, totalScore: true },
       }),
-    );
+      prisma.examGroup.findMany({
+        where: { examId: { in: examIds } },
+        select: { examId: true, groupId: true },
+      }),
+    ]);
 
-    return res.status(200).json(enricedExams);
+    // Build passing map
+    const passingMap = new Map<string, { total: number; passing: number }>();
+    for (const attempt of allAttempts) {
+      const entry = passingMap.get(attempt.examId) || { total: 0, passing: 0 };
+      entry.total++;
+      if (attempt.totalScore >= 60) entry.passing++;
+      passingMap.set(attempt.examId, entry);
+    }
+
+    // Build exam -> group IDs map
+    const examGroupIds = new Map<string, string[]>();
+    const allGroupIds = new Set<string>();
+    for (const eg of examGroups) {
+      const groups = examGroupIds.get(eg.examId) || [];
+      groups.push(eg.groupId);
+      examGroupIds.set(eg.examId, groups);
+      allGroupIds.add(eg.groupId);
+    }
+
+    // Get all group members in one query
+    const groupMembers = await prisma.groupMember.findMany({
+      where: { groupId: { in: Array.from(allGroupIds) } },
+      select: { groupId: true, userId: true },
+    });
+
+    const groupMemberMap = new Map<string, Set<string>>();
+    for (const gm of groupMembers) {
+      const members = groupMemberMap.get(gm.groupId) || new Set();
+      members.add(gm.userId);
+      groupMemberMap.set(gm.groupId, members);
+    }
+
+    // Build student count map per exam
+    const studentCountMap = new Map<string, number>();
+    for (const [examId, groupIds] of examGroupIds) {
+      const uniqueStudents = new Set<string>();
+      for (const gid of groupIds) {
+        const members = groupMemberMap.get(gid);
+        if (members) members.forEach((uid) => uniqueStudents.add(uid));
+      }
+      studentCountMap.set(examId, uniqueStudents.size);
+    }
+
+    const enrichedExams = paginatedExams.map((exam) => {
+      const passData = passingMap.get(exam.id);
+      const passingPercentage =
+        passData && passData.total > 0
+          ? Math.round((passData.passing / passData.total) * 10000) / 100
+          : 0;
+
+      const derivedStatus = deriveExamStatus(
+        exam.isPublished,
+        exam.startDate,
+        exam.endDate,
+        now,
+      );
+
+      return {
+        id: exam.id,
+        title: exam.title,
+        description: exam.description,
+        startDate: exam.startDate,
+        endDate: exam.endDate,
+        status: derivedStatus,
+        studentCount: studentCountMap.get(exam.id) ?? 0,
+        problemCount: exam._count.problems,
+        passingPercentage,
+        createdAt: exam.createdAt,
+        createdBy: {
+          id: exam.creator.id,
+          name: exam.creator.name,
+          email: exam.creator.email,
+        },
+      };
+    });
+
+    return res.status(200).json({
+      exams: enrichedExams,
+      pagination: {
+        page,
+        limit,
+        totalCount,
+        totalPages: Math.ceil(totalCount / limit),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+function deriveExamStatus(
+  isPublished: boolean,
+  startDate: Date,
+  endDate: Date,
+  now: Date,
+): string {
+  if (!isPublished) return "DRAFT";
+  if (startDate > now) return "SCHEDULED";
+  if (endDate >= now) return "ACTIVE";
+  return "COMPLETED";
+}
+
+export const getExamDashboardStats = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const user = req.user;
+    const now = new Date();
+
+    const exams = await prisma.exam.findMany({
+      select: {
+        id: true,
+        creatorId: true,
+        isPublished: true,
+        startDate: true,
+        endDate: true,
+      },
+    });
+
+    const authorizedExams: typeof exams = [];
+    for (const exam of exams) {
+      if (
+        await canAccessExamWithFallback(
+          user.id,
+          exam.id,
+          exam.creatorId,
+          PERMISSIONS.EXAM_EDIT,
+        )
+      ) {
+        authorizedExams.push(exam);
+      }
+    }
+
+    let draftExams = 0;
+    let activeExams = 0;
+    let completedExams = 0;
+
+    for (const exam of authorizedExams) {
+      const status = deriveExamStatus(
+        exam.isPublished,
+        exam.startDate,
+        exam.endDate,
+        now,
+      );
+      if (status === "DRAFT") draftExams++;
+      else if (status === "ACTIVE") activeExams++;
+      else if (status === "COMPLETED") completedExams++;
+    }
+
+    return res.status(200).json({
+      totalExams: authorizedExams.length,
+      draftExams,
+      activeExams,
+      completedExams,
+    });
   } catch (error) {
     next(error);
   }
@@ -485,6 +653,71 @@ export const draftExam = async (req: Request, res: Response) => {
   });
 
   return res.status(201).json(exam);
+};
+
+export const duplicateExam = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const user = req.user;
+    const examId = String(req.query.examId);
+
+    const originalExam = await prisma.exam.findUnique({
+      where: { id: examId },
+      include: {
+        problems: true,
+        examGroups: true,
+      },
+    });
+
+    if (!originalExam) {
+      return res.status(404).json({ error: "Exam not found" });
+    }
+
+    if (
+      !(await canAccessExamWithFallback(
+        user.id,
+        originalExam.id,
+        originalExam.creatorId,
+        PERMISSIONS.EXAM_CREATE,
+      ))
+    ) {
+      return res.status(403).json({ error: "Not authorized" });
+    }
+
+    const now = new Date();
+
+    const newExam = await prisma.exam.create({
+      data: {
+        title: `${originalExam.title} (Copy)`,
+        description: originalExam.description,
+        isPublished: false,
+        creatorId: user.id,
+        startDate: now,
+        endDate: new Date(now.getTime() + 60 * 60 * 1000),
+        durationMin: originalExam.durationMin,
+        sebEnabled: originalExam.sebEnabled,
+        status: "scheduled",
+        problems: {
+          create: originalExam.problems.map((p) => ({
+            order: p.order,
+            problemId: p.problemId,
+          })),
+        },
+        examGroups: {
+          create: originalExam.examGroups.map((eg) => ({
+            groupId: eg.groupId,
+          })),
+        },
+      },
+    });
+
+    return res.status(201).json(newExam);
+  } catch (error) {
+    next(error);
+  }
 };
 
 export const getExam = async (req: Request, res: Response) => {

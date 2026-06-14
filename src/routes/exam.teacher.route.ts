@@ -2,6 +2,7 @@ import {
   archiveBulkExams,
   deleteBulkExams,
   draftExam,
+  duplicateExam,
   exportExamsCSV,
   fetchAllExams,
   getAiEvaluationStatus,
@@ -10,6 +11,7 @@ import {
   getAllGroups,
   getExam,
   getExamAIResults,
+  getExamDashboardStats,
   getExamResults,
   publishBulkExams,
   publishExam,
@@ -30,7 +32,11 @@ const router = Router();
 
 router.get("/fetchallexams", requirePermission(PERMISSIONS.EXAM_EDIT), fetchAllExams);
 
+router.get("/dashboard", requirePermission(PERMISSIONS.EXAM_EDIT), getExamDashboardStats);
+
 router.get("/draftexam", requirePermission(PERMISSIONS.EXAM_CREATE), draftExam);
+
+router.get("/duplicate", requirePermission(PERMISSIONS.EXAM_CREATE), duplicateExam);
 
 router.get("/getexam", requirePermission(PERMISSIONS.EXAM_EDIT), getExam);
 
