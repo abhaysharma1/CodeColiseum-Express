@@ -10,6 +10,7 @@ import {
   NotificationType,
 } from "generated/prisma/client";
 import { z } from "zod";
+import { getStudentGroups as getStudentGroupsService, getStudentGroupsStats as getStudentGroupsStatsService } from "@/services/group.service";
 
 async function getExamGroupId(examId: string): Promise<string | undefined> {
   const examGroup = await prisma.examGroup.findFirst({
@@ -1419,7 +1420,7 @@ export const createGroup = async (
     emails: z.array(z.string().email()),
     allowJoinByLink: z.boolean(),
     isAiEnabled: z.boolean(),
-    type: z.enum(["CLASS", "LAB"]),
+    type: z.enum(["CLASS", "BATCH", "SECTION", "CUSTOM"]),
     aiMaxMessages: z.number().min(1).max(50).optional(),
     aiMaxTokens: z.number().min(50).max(10000).optional(),
   });
@@ -1918,7 +1919,7 @@ export const updateGroupDetails = async (
     groupId: z.string().min(1),
     name: z.string().min(1),
     description: z.string().optional(),
-    type: z.enum(["CLASS", "LAB"]),
+    type: z.enum(["CLASS", "BATCH", "SECTION", "CUSTOM"]),
     aiEnabled: z.boolean(),
     aiMaxMessages: z.number().min(1).max(50).optional(),
     aiMaxTokens: z.number().min(50).max(10000).optional(),
@@ -2334,6 +2335,63 @@ export const getAiEvaluationStatus = async (
     });
 
     return res.status(200).json({ total, completed });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getStudentGroups = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const user = req.user!;
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 12));
+    const search = String(req.query.search || "");
+    const type = String(req.query.type || "ALL");
+    const aiEnabled = String(req.query.aiEnabled || "");
+    const sort = String(req.query.sort || "newest");
+
+    const allGroups = await prisma.group.findMany({
+      select: { id: true, creatorId: true },
+    });
+
+    const accessibleGroupIds: string[] = [];
+    for (const g of allGroups) {
+      if (await canAccessGroupWithFallback(user.id, g.id, g.creatorId, PERMISSIONS.GROUP_VIEW)) {
+        accessibleGroupIds.push(g.id);
+      }
+    }
+
+    if (accessibleGroupIds.length === 0) {
+      return res.status(200).json({ groups: [], pagination: { page, limit, total: 0, totalPages: 0 } });
+    }
+
+    const result = await getStudentGroupsService(user.id, accessibleGroupIds, {
+      page, limit, search: search || undefined, type, aiEnabled: aiEnabled || undefined, sort,
+    });
+
+    return res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getStudentGroupsStats = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const user = req.user!;
+
+    const allGroups = await prisma.group.findMany({
+      select: { id: true, creatorId: true },
+    });
+
+    const accessibleGroupIds: string[] = [];
+    for (const g of allGroups) {
+      if (await canAccessGroupWithFallback(user.id, g.id, g.creatorId, PERMISSIONS.GROUP_VIEW)) {
+        accessibleGroupIds.push(g.id);
+      }
+    }
+
+    const stats = await getStudentGroupsStatsService(user.id, accessibleGroupIds);
+    return res.status(200).json(stats);
   } catch (error) {
     next(error);
   }
