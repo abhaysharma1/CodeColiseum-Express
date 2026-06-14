@@ -18,7 +18,7 @@ export interface StudentGroupCard {
   type: string;
   aiEnabled: boolean;
   createdAt: Date;
-  updatedAt: Date;
+  updatedAt: Date | null;
   studentCount: number;
   assignedExamCount: number;
   assignedLabCount: number;
