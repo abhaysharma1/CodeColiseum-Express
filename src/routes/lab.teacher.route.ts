@@ -11,6 +11,7 @@ router.use(isTeacher);
 // Lab CRUD
 router.post("/labs", requirePermission(PERMISSIONS.LAB_CREATE), labController.createLab);
 router.get("/labs", requirePermission(PERMISSIONS.LAB_VIEW), labController.getLabs);
+router.get("/labs/stats", requirePermission(PERMISSIONS.LAB_VIEW), labController.getLabsStats);
 router.get("/labs/:labId", requirePermission(PERMISSIONS.LAB_VIEW), labController.getLab);
 router.patch("/labs/:labId", requirePermission(PERMISSIONS.LAB_EDIT), labController.updateLab);
 router.delete("/labs/:labId", requirePermission(PERMISSIONS.LAB_DELETE), labController.deleteLab);

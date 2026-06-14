@@ -60,7 +60,9 @@ export const getLabs = async (
     const [labs, total] = await Promise.all([
       prisma.lab.findMany({
         where: { creatorId: user.id },
-        include: { _count: { select: { modules: true } } },
+        include: {
+          _count: { select: { modules: true, assignments: true } },
+        },
         orderBy: { createdAt: "desc" },
         take,
         skip,
@@ -77,6 +79,7 @@ export const getLabs = async (
         createdAt: lab.createdAt,
         updatedAt: lab.updatedAt,
         modulesCount: lab._count.modules,
+        assignedGroupsCount: lab._count.assignments,
       })),
       pagination: {
         take,
@@ -693,6 +696,37 @@ export const getModuleStudentProgress = async (
     const progress = await getModuleStudentProgressService(moduleId);
 
     res.status(200).json(progress);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getLabsStats = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const user = req.user!;
+
+    const [totalLabs, labsWithModules, totalGroups, totalStudents] = await Promise.all([
+      prisma.lab.count({ where: { creatorId: user.id } }),
+      prisma.lab.findMany({
+        where: { creatorId: user.id },
+        select: { _count: { select: { modules: true } } },
+      }),
+      prisma.group.count({ where: { creatorId: user.id } }),
+      prisma.groupMember.count({
+        where: { group: { creatorId: user.id } },
+      }),
+    ]);
+
+    const totalModules = labsWithModules.reduce(
+      (sum, lab) => sum + lab._count.modules,
+      0,
+    );
+
+    res.json({ totalLabs, totalModules, totalGroups, totalStudents });
   } catch (error) {
     next(error);
   }
