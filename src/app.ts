@@ -107,7 +107,7 @@ app.use((req: Request, res: Response) => {
 
 // Global Error Handler
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
-  const statusCode = err.statusCode || 500;
+  const statusCode = err.status || err.statusCode || 500;
   console.error(`[Error] ${err.message}`);
 
   res.status(statusCode).json({
