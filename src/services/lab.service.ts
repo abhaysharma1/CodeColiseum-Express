@@ -362,23 +362,39 @@ export async function getAssessmentResults(
   };
 }
 
+export function canAccessModuleProblem(moduleProblem: {
+  isUnlocked: boolean;
+  availableFrom: Date | null;
+  availableUntil: Date | null;
+}): { allowed: boolean; reason?: "LOCKED" | "NOT_YET_AVAILABLE" | "EXPIRED" } {
+  const now = new Date();
+
+  if (!moduleProblem.isUnlocked) {
+    return { allowed: false, reason: "LOCKED" };
+  }
+
+  if (moduleProblem.availableFrom && now < moduleProblem.availableFrom) {
+    return { allowed: false, reason: "NOT_YET_AVAILABLE" };
+  }
+
+  if (moduleProblem.availableUntil && now > moduleProblem.availableUntil) {
+    return { allowed: false, reason: "EXPIRED" };
+  }
+
+  return { allowed: true };
+}
+
 export async function upsertModuleProblemProgress(
   userId: string,
-  problemId: string,
   submissionId: string,
   status: string,
   moduleProblemId?: string,
 ) {
-  let moduleProblem;
-  if (moduleProblemId) {
-    moduleProblem = await prisma.moduleProblem.findUnique({
-      where: { id: moduleProblemId },
-    });
-  } else {
-    moduleProblem = await prisma.moduleProblem.findFirst({
-      where: { problemId },
-    });
-  }
+  if (!moduleProblemId) return;
+
+  const moduleProblem = await prisma.moduleProblem.findUnique({
+    where: { id: moduleProblemId },
+  });
   if (!moduleProblem) return;
 
   const isAccepted = status === "ACCEPTED";

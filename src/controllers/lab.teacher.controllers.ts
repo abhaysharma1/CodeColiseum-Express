@@ -7,6 +7,7 @@ import {
   createModuleSchema,
   updateModuleSchema,
   addModuleProblemsSchema,
+  updateModuleProblemAccessSchema,
   assignAssessmentSchema,
   createAssessmentSchema,
 } from "@/validations/lab.schema";
@@ -452,7 +453,76 @@ export const getModuleProblems = async (
       orderBy: { orderIndex: "asc" },
     });
 
-    res.status(200).json(problems);
+    res.status(200).json(
+      problems.map((p: any) => ({
+        id: p.id,
+        moduleId: p.moduleId,
+        problemId: p.problemId,
+        orderIndex: p.orderIndex,
+        problem: p.problem,
+        isUnlocked: p.isUnlocked,
+        availableFrom: p.availableFrom,
+        availableUntil: p.availableUntil,
+      })),
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateModuleProblemAccess = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const user = req.user!;
+    const moduleProblemId = req.params.moduleProblemId as string;
+    await getTeacherModuleProblemOrThrow(user.id, moduleProblemId);
+
+    const parsed = updateModuleProblemAccessSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, message: "Validation failed", errors: parsed.error.flatten().fieldErrors });
+    }
+
+    const data: any = {};
+    if (parsed.data.isUnlocked !== undefined) {
+      data.isUnlocked = parsed.data.isUnlocked;
+    }
+    if (parsed.data.availableFrom !== undefined) {
+      data.availableFrom = parsed.data.availableFrom ? new Date(parsed.data.availableFrom) : null;
+    }
+    if (parsed.data.availableUntil !== undefined) {
+      data.availableUntil = parsed.data.availableUntil ? new Date(parsed.data.availableUntil) : null;
+    }
+
+    await prisma.moduleProblem.update({
+      where: { id: moduleProblemId },
+      data,
+    });
+
+    res.status(200).json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getModuleProblemAccess = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const user = req.user!;
+    const moduleProblemId = req.params.moduleProblemId as string;
+    const mp = await getTeacherModuleProblemOrThrow(user.id, moduleProblemId);
+    const mpAny = mp as any;
+
+    res.status(200).json({
+      isUnlocked: mpAny.isUnlocked ?? false,
+      availableFrom: mpAny.availableFrom ?? null,
+      availableUntil: mpAny.availableUntil ?? null,
+    });
   } catch (error) {
     next(error);
   }

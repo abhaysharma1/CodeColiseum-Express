@@ -54,6 +54,20 @@ export const addModuleProblemsSchema = z.object({
   problemIds: z.array(z.string()).min(1),
 });
 
+export const updateModuleProblemAccessSchema = z.object({
+  isUnlocked: z.boolean().optional(),
+  availableFrom: z.string().datetime().optional().nullable(),
+  availableUntil: z.string().datetime().optional().nullable(),
+}).refine(
+  (data) => {
+    if (data.availableFrom && data.availableUntil) {
+      return new Date(data.availableFrom) < new Date(data.availableUntil);
+    }
+    return true;
+  },
+  { message: "availableFrom must be before availableUntil", path: ["availableUntil"] },
+);
+
 export const assignAssessmentSchema = z.object({
   examId: z.string(),
 });

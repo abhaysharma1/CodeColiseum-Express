@@ -164,10 +164,9 @@ export async function getPracticeSubmissionStatusService(
     throw error;
   }
 
-  // Update module problem progress if this problem belongs to a lab module
+  // Update module problem progress if this submission was made in module context
   upsertModuleProblemProgress(
     submission.userId,
-    submission.problemId,
     submission.id,
     submission.status,
     moduleProblemId,

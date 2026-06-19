@@ -32,6 +32,10 @@ router.post("/modules/:moduleId/problems", requirePermission(PERMISSIONS.LAB_EDI
 router.get("/modules/:moduleId/problems", requirePermission(PERMISSIONS.LAB_VIEW), labController.getModuleProblems);
 router.delete("/module-problems/:moduleProblemId", requirePermission(PERMISSIONS.LAB_EDIT), labController.removeModuleProblem);
 
+// Module Problem Access Control
+router.patch("/module-problems/:moduleProblemId/access", requirePermission(PERMISSIONS.LAB_EDIT), labController.updateModuleProblemAccess);
+router.get("/module-problems/:moduleProblemId/access", requirePermission(PERMISSIONS.LAB_VIEW), labController.getModuleProblemAccess);
+
 // Assessment
 router.post("/modules/:moduleId/assessment", requirePermission(PERMISSIONS.LAB_EDIT), labController.assignAssessment);
 router.patch("/modules/:moduleId/assessment", requirePermission(PERMISSIONS.LAB_EDIT), labController.updateAssessment);

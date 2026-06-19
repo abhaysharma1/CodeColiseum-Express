@@ -95,6 +95,14 @@ export interface ProblemAnalyticsEntry {
   averageAttempts: number;
 }
 
+export type ModuleProblemAccessStatus = "LOCKED" | "AVAILABLE" | "NOT_YET_AVAILABLE" | "EXPIRED";
+
+export interface ModuleProblemAccessConfig {
+  isUnlocked: boolean;
+  availableFrom: string | null;
+  availableUntil: string | null;
+}
+
 export interface ProgressResponse {
   problems: {
     moduleProblemId: string;

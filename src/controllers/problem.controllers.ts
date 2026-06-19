@@ -14,6 +14,7 @@ import {
   resolveLanguageId,
   resolveLanguageFromInput,
 } from "@/utils/languageCatalog";
+import { canAccessModuleProblem } from "@/services/lab.service";
 
 const CASE_START_TOKEN = "_CASE_START_";
 const CASE_END_TOKEN = "_CASE_END_";
@@ -142,6 +143,36 @@ const normalizeProblemTestCases = (rawCases: unknown): NormalizedTestCase[] => {
 
   return normalized;
 };
+
+async function verifyModuleProblemAccess(
+  studentId: string,
+  moduleProblemId: string,
+): Promise<void> {
+  const mp = await (prisma as any).moduleProblem.findUnique({
+    where: { id: moduleProblemId },
+    select: { isUnlocked: true, availableFrom: true, availableUntil: true },
+  });
+  if (!mp) {
+    const err = new Error("Module problem not found");
+    (err as any).status = 404;
+    throw err;
+  }
+  const access = canAccessModuleProblem({
+    isUnlocked: mp.isUnlocked ?? false,
+    availableFrom: mp.availableFrom ?? null,
+    availableUntil: mp.availableUntil ?? null,
+  });
+  if (!access.allowed) {
+    const messages: Record<string, string> = {
+      LOCKED: "Problem is currently locked",
+      NOT_YET_AVAILABLE: "Problem is not yet available",
+      EXPIRED: "Problem access window has expired",
+    };
+    const err = new Error(messages[access.reason!] || "Problem not accessible");
+    (err as any).status = 403;
+    throw err;
+  }
+}
 
 export const getProblems = async (
   req: Request,
@@ -428,7 +459,7 @@ export const runCode = async (
   next: NextFunction,
 ) => {
   try {
-    const { questionId, language, languageId, code } = req.body;
+    const { questionId, language, languageId, code, moduleProblemId } = req.body;
     const resolvedLanguageId = resolveLanguageId({
       language,
       languageId,
@@ -444,6 +475,10 @@ export const runCode = async (
       const error = new Error("Unsupported language");
       (error as any).status = 400;
       return next(error);
+    }
+
+    if (moduleProblemId && req.user?.id) {
+      await verifyModuleProblemAccess(req.user.id, moduleProblemId);
     }
 
     const requestData: RunCodeRequest = {
@@ -482,6 +517,10 @@ export const submitCode = async (
       const error = new Error("Unsupported language");
       (error as any).status = 400;
       return next(error);
+    }
+
+    if (moduleProblemId && req.user?.id) {
+      await verifyModuleProblemAccess(req.user.id, moduleProblemId);
     }
 
     const requestData: SubmitCodeRequest = {

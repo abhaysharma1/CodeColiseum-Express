@@ -1041,6 +1041,10 @@ model ModuleProblem {
 
   orderIndex Int?
 
+  isUnlocked    Boolean   @default(false)
+  availableFrom DateTime?
+  availableUntil DateTime?
+
   createdAt DateTime @default(now())
 
   progress ModuleProblemProgress[]

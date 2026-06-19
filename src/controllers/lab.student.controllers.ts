@@ -6,6 +6,7 @@ import {
   toAssessmentDTO,
   computeModuleStatus,
   getModuleProblemProgress,
+  canAccessModuleProblem,
 } from "@/services/lab.service";
 
 export const getMyLabs = async (
@@ -281,14 +282,25 @@ export const getModuleProblems = async (
           ? Math.round((completedProblems / totalProblems) * 100)
           : 0,
       assessment,
-      problems: problems.map((p: any) => ({
-        id: p.id,
-        moduleId: p.moduleId,
-        problemId: p.problemId,
-        orderIndex: p.orderIndex,
-        problem: p.problem,
-        progress: p.progress[0] || null,
-      })),
+      problems: problems.map((p: any) => {
+        const access = canAccessModuleProblem({
+          isUnlocked: p.isUnlocked ?? false,
+          availableFrom: p.availableFrom ?? null,
+          availableUntil: p.availableUntil ?? null,
+        });
+        return {
+          id: p.id,
+          moduleId: p.moduleId,
+          problemId: p.problemId,
+          orderIndex: p.orderIndex,
+          problem: p.problem,
+          progress: p.progress[0] || null,
+          isUnlocked: p.isUnlocked ?? false,
+          availableFrom: p.availableFrom ?? null,
+          availableUntil: p.availableUntil ?? null,
+          accessStatus: access.allowed ? "AVAILABLE" : access.reason,
+        };
+      }),
     });
   } catch (error) {
     next(error);
@@ -408,27 +420,38 @@ export const getModuleProblem = async (
         ? allModuleProblems[currentIndex + 1]
         : null;
 
+    const mpAny = moduleProblem as any;
+    const accessResult = canAccessModuleProblem({
+      isUnlocked: mpAny.isUnlocked ?? false,
+      availableFrom: mpAny.availableFrom ?? null,
+      availableUntil: mpAny.availableUntil ?? null,
+    });
+
     res.status(200).json({
       moduleProblem: {
-        id: moduleProblem.id,
-        moduleId: moduleProblem.moduleId,
-        problemId: moduleProblem.problemId,
-        orderIndex: moduleProblem.orderIndex,
+        id: mpAny.id,
+        moduleId: mpAny.moduleId,
+        problemId: mpAny.problemId,
+        orderIndex: mpAny.orderIndex,
+        isUnlocked: mpAny.isUnlocked ?? false,
+        availableFrom: mpAny.availableFrom ?? null,
+        availableUntil: mpAny.availableUntil ?? null,
+        accessStatus: accessResult.allowed ? "AVAILABLE" : accessResult.reason,
       },
       module: {
-        id: moduleProblem.module.id,
-        title: moduleProblem.module.title,
-        description: moduleProblem.module.description,
-        weekNumber: moduleProblem.module.weekNumber,
-        orderIndex: moduleProblem.module.orderIndex,
-        unlockAt: moduleProblem.module.unlockAt,
-        dueAt: moduleProblem.module.dueAt,
-        assessmentExamId: moduleProblem.module.assessmentExamId,
+        id: mpAny.module.id,
+        title: mpAny.module.title,
+        description: mpAny.module.description,
+        weekNumber: mpAny.module.weekNumber,
+        orderIndex: mpAny.module.orderIndex,
+        unlockAt: mpAny.module.unlockAt,
+        dueAt: mpAny.module.dueAt,
+        assessmentExamId: mpAny.module.assessmentExamId,
       },
       lab: {
-        id: moduleProblem.module.lab.id,
-        title: moduleProblem.module.lab.title,
-        description: moduleProblem.module.lab.description,
+        id: mpAny.module.lab.id,
+        title: mpAny.module.lab.title,
+        description: mpAny.module.lab.description,
       },
       progress: progress
         ? {
