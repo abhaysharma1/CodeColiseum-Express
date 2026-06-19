@@ -22,6 +22,7 @@ import {
   getModuleStudentProgress as getModuleStudentProgressService,
   getAssessmentResults as getAssessmentResultsService,
 } from "@/services/lab.service";
+import { exportModuleAnalytics as exportModuleAnalyticsFn } from "@/controllers/module-export.controller";
 
 export const createLab = async (
   req: Request,
@@ -819,3 +820,5 @@ export const getModuleProblemAnalytics = async (
     next(error);
   }
 };
+
+export const exportModuleAnalytics = exportModuleAnalyticsFn;

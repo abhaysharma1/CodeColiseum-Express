@@ -48,4 +48,6 @@ router.get("/modules/:moduleId/assessment-results", requirePermission(PERMISSION
 router.get("/modules/:moduleId/student-progress", requirePermission(PERMISSIONS.ANALYTICS_VIEW), labController.getModuleStudentProgress);
 router.get("/modules/:moduleId/problem-analytics", requirePermission(PERMISSIONS.ANALYTICS_VIEW), labController.getModuleProblemAnalytics);
 
+router.get("/modules/:moduleId/export-excel", requirePermission(PERMISSIONS.ANALYTICS_VIEW), labController.exportModuleAnalytics);
+
 export default router;
