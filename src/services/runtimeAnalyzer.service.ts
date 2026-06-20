@@ -233,7 +233,6 @@ async function runNormalCases(
 
   if (compile?.stderr?.trim()) {
     return {
-    
       totalRuntimeMs: 0,
       totalMemoryKb: 0,
       passedCount: 0,
@@ -421,7 +420,6 @@ async function runPerformanceTestCases(
         },
       );
 
-
       const run = response.data.run ?? {};
       const compile = response.data.compile;
 
@@ -438,7 +436,7 @@ async function runPerformanceTestCases(
         continue;
       }
 
-      const runtimeMs = Math.round((run.cpu_time ?? 0));
+      const runtimeMs = Math.round(run.cpu_time ?? 0);
       const memoryKb =
         (run.memory ?? 0) > 0 ? Math.round((run.memory ?? 0) / 1024) : 0;
 
@@ -455,6 +453,8 @@ async function runPerformanceTestCases(
       }
 
       const actualOutput = (run.stdout ?? run.output ?? "")
+        .replace("_CASE_START_", "")
+        .replace("_CASE_END_", "")
         .replace(/\r\n/g, "\n")
         .replace(/\r/g, "\n")
         .trim();
@@ -463,10 +463,8 @@ async function runPerformanceTestCases(
         Boolean(run.stderr?.trim()) ||
         (typeof run.code === "number" && run.code !== 0);
 
-
       console.log("Expected Output: \n :", expectedOutput);
       console.log("Actual Output: \n :", actualOutput);
-
 
       let status: PerformanceCaseResult["status"];
       if (hasRuntimeError) {
@@ -486,7 +484,6 @@ async function runPerformanceTestCases(
         status,
       });
     } catch (error: any) {
-
       results.push({
         id: tc.id,
         name: tc.name,
