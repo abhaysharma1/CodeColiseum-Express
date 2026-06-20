@@ -463,6 +463,11 @@ async function runPerformanceTestCases(
         Boolean(run.stderr?.trim()) ||
         (typeof run.code === "number" && run.code !== 0);
 
+
+      console.log("Expected Output: \n :", expectedOutput);
+      console.log("Actual Output: \n :", actualOutput);
+
+
       let status: PerformanceCaseResult["status"];
       if (hasRuntimeError) {
         status = "RUNTIME_ERROR";
