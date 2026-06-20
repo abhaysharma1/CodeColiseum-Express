@@ -1,8 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import { z } from "zod";
 import {
-  GeneratorPattern,
-  GeneratorType,
   ProgrammingLanguage,
 } from "../../generated/prisma/enums";
 import { Prisma } from "../../generated/prisma/client";
@@ -22,6 +20,7 @@ import {
 import { runRawCodeService } from "@/services/runReferenceSolution.service";
 import { analyzeRuntime } from "@/services/runtimeAnalyzer.service";
 import { C } from "@upstash/redis/zmscore-BjNXmrug";
+import { uploadToS3, deleteFromS3, getBucket } from "@/utils/s3";
 
 // Types
 interface JudgeStatus {
@@ -254,13 +253,8 @@ const driverCodeSchema = z.object({
   footer: z.string().optional(),
 });
 
-const problemTestGeneratorSchema = z.object({
+const performanceConstraintsSchema = z.object({
   problemId: z.string(),
-  type: z.enum(["ARRAY", "STRING", "MATRIX"]).default("ARRAY"),
-  pattern: z.enum(["RANDOM", "SORTED", "REVERSE", "CONSTANT"]),
-  minValue: z.number().int(),
-  maxValue: z.number().int(),
-  sizes: z.array(z.number().int().positive()).min(1),
   cppTimeLimitMs: z.number().int().positive().default(1000),
   javaTimeLimitMs: z.number().int().positive().default(2000),
   pythonTimeLimitMs: z.number().int().positive().default(4000),
@@ -486,7 +480,7 @@ export const uploadDriverCode = async (req: Request, res: Response) => {
 };
 
 // Get Problem Test Generator
-export const getProblemTestGenerator = async (req: Request, res: Response) => {
+export const getPerformanceConstraints = async (req: Request, res: Response) => {
   try {
     const { problemId } = req.query;
 
@@ -494,46 +488,34 @@ export const getProblemTestGenerator = async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Missing problemId" });
     }
 
-    const generator = await prisma.problemTestGenerator.findUnique({
+    const constraints = await prisma.performanceConstraints.findUnique({
       where: { problemId },
     });
 
-    res.status(200).json({ generator: generator || null });
+    res.status(200).json({ constraints: constraints || null });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
-// Create/Update Problem Test Generator
-export const createUpdateProblemTestGenerator = async (
+// Create/Update Performance Constraints
+export const createUpdatePerformanceConstraints = async (
   req: Request,
   res: Response,
 ) => {
   try {
-    const validation = problemTestGeneratorSchema.safeParse(req.body);
+    const validation = performanceConstraintsSchema.safeParse(req.body);
     if (!validation.success) {
       return res.status(400).json({ error: "Invalid payload" });
     }
 
     const data = validation.data;
 
-    if (data.minValue >= data.maxValue) {
-      return res
-        .status(400)
-        .json({ error: "minValue must be less than maxValue" });
-    }
-
-
-    const saved = await prisma.problemTestGenerator.upsert({
+    const saved = await prisma.performanceConstraints.upsert({
       where: { problemId: data.problemId },
       create: {
         problemId: data.problemId,
-        type: data.type as GeneratorType,
-        pattern: data.pattern as GeneratorPattern,
-        minValue: data.minValue,
-        maxValue: data.maxValue,
-        sizes: data.sizes,
         cppTimeLimitMs: data.cppTimeLimitMs,
         javaTimeLimitMs: data.javaTimeLimitMs,
         pythonTimeLimitMs: data.pythonTimeLimitMs,
@@ -541,11 +523,6 @@ export const createUpdateProblemTestGenerator = async (
         memoryLimitMB: data.memoryLimitMB,
       },
       update: {
-        type: data.type as GeneratorType,
-        pattern: data.pattern as GeneratorPattern,
-        minValue: data.minValue,
-        maxValue: data.maxValue,
-        sizes: data.sizes,
         cppTimeLimitMs: data.cppTimeLimitMs,
         javaTimeLimitMs: data.javaTimeLimitMs,
         pythonTimeLimitMs: data.pythonTimeLimitMs,
@@ -554,15 +531,15 @@ export const createUpdateProblemTestGenerator = async (
       },
     });
 
-    res.status(200).json({ generator: saved });
+    res.status(200).json({ constraints: saved });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
-// Delete Problem Test Generator
-export const deleteProblemTestGenerator = async (req: Request, res: Response) => {
+// Delete Performance Constraints
+export const deletePerformanceConstraints = async (req: Request, res: Response) => {
   try {
     const { problemId } = req.query;
 
@@ -570,19 +547,106 @@ export const deleteProblemTestGenerator = async (req: Request, res: Response) =>
       return res.status(400).json({ error: "Missing problemId" });
     }
 
-    const existing = await prisma.problemTestGenerator.findUnique({
+    const existing = await prisma.performanceConstraints.findUnique({
       where: { problemId },
     });
 
     if (!existing) {
-      return res.status(404).json({ error: "No generator found for this problem" });
+      return res.status(404).json({ error: "No constraints found for this problem" });
     }
 
-    await prisma.problemTestGenerator.delete({
+    await prisma.performanceConstraints.delete({
       where: { problemId },
     });
 
-    res.status(200).json({ success: true, message: "Generator deleted successfully" });
+    res.status(200).json({ success: true, message: "Constraints deleted successfully" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+// Performance Test Cases CRUD
+
+export const getPerformanceTestCases = async (req: Request, res: Response) => {
+  try {
+    const { problemId } = req.query;
+
+    if (!problemId || typeof problemId !== "string") {
+      return res.status(400).json({ error: "Missing problemId" });
+    }
+
+    const testCases = await prisma.performanceTestCase.findMany({
+      where: { problemId },
+      orderBy: { createdAt: "asc" },
+    });
+
+    res.status(200).json({ testCases });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+export const createPerformanceTestCase = async (req: Request, res: Response) => {
+  try {
+    const { problemId, name } = req.body;
+
+    if (!problemId || !name) {
+      return res.status(400).json({ error: "Missing required fields: problemId, name" });
+    }
+
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+    const inputFile = files?.input?.[0];
+    const outputFile = files?.output?.[0];
+
+    if (!inputFile || !outputFile) {
+      return res.status(400).json({ error: "Both input and output files are required" });
+    }
+
+    const testCaseId = crypto.randomUUID();
+    const inputFileKey = `perf-tests/${problemId}/${testCaseId}-input.txt`;
+    const outputFileKey = `perf-tests/${problemId}/${testCaseId}-output.txt`;
+
+    await uploadToS3(inputFileKey, inputFile.buffer);
+    await uploadToS3(outputFileKey, outputFile.buffer);
+
+    const testCase = await prisma.performanceTestCase.create({
+      data: {
+        problemId,
+        name,
+        inputFileKey,
+        outputFileKey,
+      },
+    });
+
+    res.status(201).json({ testCase });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+export const deletePerformanceTestCase = async (req: Request, res: Response) => {
+  try {
+    const id = req.params.id as string;
+
+    const existing = await prisma.performanceTestCase.findUnique({
+      where: { id },
+    });
+
+    if (!existing) {
+      return res.status(404).json({ error: "Performance test case not found" });
+    }
+
+    await deleteFromS3(existing.inputFileKey);
+    await deleteFromS3(existing.outputFileKey);
+
+    await prisma.performanceTestCase.delete({
+      where: { id },
+    });
+
+    res.status(200).json({ success: true, message: "Performance test case deleted" });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Internal Server Error" });

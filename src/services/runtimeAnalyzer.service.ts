@@ -459,7 +459,7 @@ export async function analyzeRuntime(
       testCase: true,
       runTestCase: true,
       driverCode: true,
-      problemTestGenerators: true,
+      performanceConstraints: true,
     },
   });
 
@@ -540,87 +540,9 @@ export async function analyzeRuntime(
     }
   }
 
-  // Step 2: Run stress test cases (per size, concurrent with limit)
-  const stressCases: StressCaseResult[] = [];
-  const generator = problem.problemTestGenerators;
-
-  if (generator && generator.sizes.length > 0) {
-    const sizes = generator.sizes.filter((s) => s > 0);
-    const pistonLang = PISTON_LANGUAGE_MAP[normalizedLanguage];
-    const CONCURRENCY = 3;
-
-    const runOne = async (size: number): Promise<StressCaseResult> => {
-      const input = generateStressInput(
-        generator.type,
-        size,
-        generator.minValue,
-        generator.maxValue,
-        generator.pattern,
-      );
-
-      const stressStdin = `1\n${input}`;
-      const inputBytes = Buffer.byteLength(stressStdin, "utf-8");
-
-      const payload: PistonExecuteRequest = {
-        language: pistonLang,
-        version: "*",
-        files:
-          pistonLang === "java"
-            ? [{ name: "Main.java", content: finalCode }]
-            : [{ content: finalCode }],
-        stdin: stressStdin,
-      };
-
-      try {
-        const response = await axios.post<PistonExecutionResult>(
-          getPistonExecuteUrl(),
-          payload,
-          {
-            headers: { "Content-Type": "application/json" },
-            timeout: 30000,
-          },
-        );
-
-        const run = response.data.run ?? {};
-        const runtimeMs = Math.round(run.cpu_time ?? 0);
-        const memoryKb =
-          (run.memory ?? 0) > 0 ? Math.round((run.memory ?? 0) / 1024) : 0;
-
-        return {
-          size,
-          runtimeMs,
-          memoryKb,
-          inputBytes,
-          generatorType: generator.type,
-          pattern: generator.pattern,
-        };
-      } catch {
-        return {
-          size,
-          runtimeMs: 0,
-          memoryKb: 0,
-          inputBytes,
-          generatorType: generator.type,
-          pattern: generator.pattern,
-        };
-      }
-    };
-
-    // Run with concurrency limit using batches
-    for (let i = 0; i < sizes.length; i += CONCURRENCY) {
-      const batch = sizes.slice(i, i + CONCURRENCY);
-      const results = await Promise.allSettled(batch.map(runOne));
-      for (const r of results) {
-        if (r.status === "fulfilled") stressCases.push(r.value);
-      }
-    }
-  }
-
-  const summary = computeSummary(stressCases);
-
   return {
     normalCases,
-    stressCases,
-    summary,
+    stressCases: [],
+    summary: null,
   };
 }

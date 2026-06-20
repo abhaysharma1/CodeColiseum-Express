@@ -3,8 +3,12 @@ import multer from "multer";
 import { isAdmin } from "@/middleware/isAdmin.middleware";
 import {
   uploadDriverCode,
-  getProblemTestGenerator,
-  createUpdateProblemTestGenerator,
+  getPerformanceConstraints,
+  createUpdatePerformanceConstraints,
+  deletePerformanceConstraints,
+  getPerformanceTestCases,
+  createPerformanceTestCase,
+  deletePerformanceTestCase,
   uploadProblems,
   validateComplexityCases,
   validateProblem,
@@ -21,7 +25,6 @@ import {
   getProblemsForAdmin,
   runReferenceSolution,
   runtimeAnalyzer,
-  deleteProblemTestGenerator,
   toggleProblemHidden,
   toggleProblemPublish,
 } from "@/controllers/admin.controllers";
@@ -38,16 +41,21 @@ const router = Router();
 // Apply admin middleware to all routes
 router.use(isAdmin);
 
-// Complexity Cases Routes
-// router.post("/complexity-cases", uploadComplexityCases);
-
 // Driver Code Routes
 router.post("/driver-code", uploadDriverCode);
 
-// Problem Test Generator Routes
-router.get("/problem-test-generator", getProblemTestGenerator);
-router.post("/problem-test-generator", createUpdateProblemTestGenerator);
-router.delete("/problem-test-generator", deleteProblemTestGenerator);
+// Performance Constraints Routes
+router.get("/performance-constraints", getPerformanceConstraints);
+router.post("/performance-constraints", createUpdatePerformanceConstraints);
+router.delete("/performance-constraints", deletePerformanceConstraints);
+
+// Performance Test Cases Routes
+router.get("/performance-test-cases", getPerformanceTestCases);
+router.post("/performance-test-cases", multer({ storage: multer.memoryStorage() }).fields([
+  { name: "input", maxCount: 1 },
+  { name: "output", maxCount: 1 },
+]), createPerformanceTestCase);
+router.delete("/performance-test-cases/:id", deletePerformanceTestCase);
 
 // Upload Problems Route
 router.post("/upload-problems", uploadProblems);
