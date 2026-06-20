@@ -396,13 +396,10 @@ async function runPerformanceTestCases(
 
   for (const tc of performanceTestCases) {
     const inputBody = await downloadFromS3(tc.inputFileKey);
-    console.log("Input \n", inputBody);
     const expectedOutput = (await downloadFromS3(tc.outputFileKey))
       .replace(/\r\n/g, "\n")
       .replace(/\r/g, "\n")
       .trim();
-
-    console.log("Expected Output : \n", expectedOutput);
 
     try {
       const payload: PistonExecuteRequest = {
@@ -485,6 +482,7 @@ async function runPerformanceTestCases(
         status,
       });
     } catch (error: any) {
+      console.log("Error: \n", error);
       results.push({
         id: tc.id,
         name: tc.name,
