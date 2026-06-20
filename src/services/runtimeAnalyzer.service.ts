@@ -232,8 +232,8 @@ async function runNormalCases(
   const run = response.data.run ?? {};
 
   if (compile?.stderr?.trim()) {
-    console.log("Normal Test Case Error: \n" + compile);
     return {
+    
       totalRuntimeMs: 0,
       totalMemoryKb: 0,
       passedCount: 0,
@@ -421,7 +421,6 @@ async function runPerformanceTestCases(
         },
       );
 
-      console.log("Response: \n", response);
 
       const run = response.data.run ?? {};
       const compile = response.data.compile;
@@ -439,7 +438,7 @@ async function runPerformanceTestCases(
         continue;
       }
 
-      const runtimeMs = Math.round((run.cpu_time ?? 0) * 1000);
+      const runtimeMs = Math.round((run.cpu_time ?? 0));
       const memoryKb =
         (run.memory ?? 0) > 0 ? Math.round((run.memory ?? 0) / 1024) : 0;
 
@@ -482,8 +481,7 @@ async function runPerformanceTestCases(
         status,
       });
     } catch (error: any) {
-      console.error("Piston error status:", error.response?.status);
-      console.error("Piston error data:", error.response?.data);
+
       results.push({
         id: tc.id,
         name: tc.name,
