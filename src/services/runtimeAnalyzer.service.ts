@@ -245,7 +245,7 @@ async function runNormalCases(
     };
   }
 
-  const totalRuntimeMs = Math.round((run.cpu_time ?? 0) * 1000);
+  const totalRuntimeMs = Math.round((run.cpu_time ?? 0));
   const totalMemoryKb =
     (run.memory ?? 0) > 0 ? Math.round((run.memory ?? 0) / 1024) : 0;
 
