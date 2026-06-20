@@ -482,7 +482,8 @@ async function runPerformanceTestCases(
         status,
       });
     } catch (error: any) {
-      console.log("Error: \n", error);
+      console.error("Piston error status:", error.response?.status);
+      console.error("Piston error data:", error.response?.data);
       results.push({
         id: tc.id,
         name: tc.name,
