@@ -26,8 +26,8 @@ router.get("/modules/:moduleId/assessment", getModuleAssessment);
 router.get("/module-problems/:moduleProblemId", getModuleProblem);
 
 // Lab AI Assist
-router.get("/ai/isenabled", isLabAiEnabled);
-router.post("/ai/chat", labChatWithAi);
-router.get("/ai/chat/status", getLabAiChatStatus);
+router.get("/lab/ai/isenabled", isLabAiEnabled);
+router.post("/lab/ai/chat", labChatWithAi);
+router.get("/lab/ai/chat/status", getLabAiChatStatus);
 
 export default router;

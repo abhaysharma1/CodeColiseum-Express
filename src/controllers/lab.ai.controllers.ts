@@ -147,7 +147,8 @@ export const labChatWithAi = async (
       data: {
         conversationId: convo.id,
         role: "USER",
-        content: "User Message: " + message + "\n" + "Code Language: " + language,
+        content:
+          "User Message: " + message + "\n" + "Code Language: " + language,
       },
     });
 
