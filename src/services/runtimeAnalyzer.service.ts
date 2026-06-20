@@ -396,10 +396,13 @@ async function runPerformanceTestCases(
 
   for (const tc of performanceTestCases) {
     const inputBody = await downloadFromS3(tc.inputFileKey);
+    console.log("Input \n", inputBody);
     const expectedOutput = (await downloadFromS3(tc.outputFileKey))
       .replace(/\r\n/g, "\n")
       .replace(/\r/g, "\n")
       .trim();
+
+    console.log("Expected Output : \n", expectedOutput);
 
     try {
       const payload: PistonExecuteRequest = {
@@ -420,6 +423,8 @@ async function runPerformanceTestCases(
           timeout: timeLimitMs + 10000,
         },
       );
+
+      console.log("Response: \n", response);
 
       const run = response.data.run ?? {};
       const compile = response.data.compile;
@@ -614,8 +619,6 @@ export async function analyzeRuntime(
       problem.performanceConstraints,
     );
   }
-
-  console.log(performanceCases)
 
   const summary = computeSummary(performanceCases);
 
