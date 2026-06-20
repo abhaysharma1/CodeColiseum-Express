@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, GetObjectCommand, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 
 const s3Client = new S3Client({
   region: process.env.AWS_REGION!,
@@ -30,4 +30,13 @@ export async function deleteFromS3(key: string): Promise<void> {
     Key: key,
   });
   await s3Client.send(command);
+}
+
+export async function downloadFromS3(key: string): Promise<string> {
+  const command = new GetObjectCommand({
+    Bucket: getBucket(),
+    Key: key,
+  });
+  const response = await s3Client.send(command);
+  return await response.Body!.transformToString("utf-8");
 }

@@ -12,13 +12,13 @@ export interface NormalCasesResult {
   cases: NormalCaseResult[];
 }
 
-export interface StressCaseResult {
-  size: number;
+export interface PerformanceCaseResult {
+  id: string;
+  name: string;
   runtimeMs: number;
   memoryKb: number;
   inputBytes: number;
-  generatorType: string;
-  pattern: string;
+  status: 'ACCEPTED' | 'WRONG_ANSWER' | 'RUNTIME_ERROR' | 'TIME_LIMIT_EXCEEDED';
 }
 
 export interface RuntimeAnalysisSummary {
@@ -31,7 +31,7 @@ export interface RuntimeAnalysisSummary {
 
 export interface RuntimeAnalysisResult {
   normalCases: NormalCasesResult | null;
-  stressCases: StressCaseResult[];
+  performanceCases: PerformanceCaseResult[];
   summary: RuntimeAnalysisSummary | null;
   compilationError?: string;
 }

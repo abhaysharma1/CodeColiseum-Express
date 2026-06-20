@@ -11,8 +11,9 @@ import type {
   RuntimeAnalysisResult,
   NormalCasesResult,
   NormalCaseResult,
-  StressCaseResult,
+  PerformanceCaseResult,
 } from "@/types/runtimeAnalyzer.types";
+import { downloadFromS3 } from "../utils/s3";
 
 interface TestCase {
   input: string;
@@ -330,93 +331,17 @@ async function runNormalCases(
   };
 }
 
-function generateArray(
-  size: number,
-  min: number,
-  max: number,
-  pattern: string,
-): number[] {
-  const arr = Array.from(
-    { length: size },
-    () => Math.floor(Math.random() * (max - min + 1)) + min,
-  );
-  if (pattern === "SORTED") arr.sort((a, b) => a - b);
-  if (pattern === "REVERSE") arr.sort((a, b) => b - a);
-  if (pattern === "CONSTANT") arr.fill(arr[0]);
-  return arr;
-}
-
-function generateString(size: number, pattern: string): string {
-  const chars =
-    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  let result = "";
-  for (let i = 0; i < size; i++) {
-    result += chars[Math.floor(Math.random() * chars.length)];
-  }
-  if (pattern === "SORTED") result = result.split("").sort().join("");
-  if (pattern === "REVERSE")
-    result = result.split("").sort().reverse().join("");
-  if (pattern === "CONSTANT") result = result[0].repeat(size);
-  return result;
-}
-
-function generateMatrix(
-  size: number,
-  min: number,
-  max: number,
-  pattern: string,
-): number[][] {
-  const matrix: number[][] = [];
-  for (let i = 0; i < size; i++) {
-    const row = Array.from(
-      { length: size },
-      () => Math.floor(Math.random() * (max - min + 1)) + min,
-    );
-    if (pattern === "SORTED") row.sort((a, b) => a - b);
-    if (pattern === "REVERSE") row.sort((a, b) => b - a);
-    if (pattern === "CONSTANT") row.fill(row[0]);
-    matrix.push(row);
-  }
-  return matrix;
-}
-
-function generateStressInput(
-  type: string,
-  size: number,
-  minValue: number,
-  maxValue: number,
-  pattern: string,
-): string {
-  switch (type) {
-    case "ARRAY": {
-      const arr = generateArray(size, minValue, maxValue, pattern);
-      return `${size}\n${arr.join(" ")}`;
-    }
-    case "STRING": {
-      const str = generateString(size, pattern);
-      return `${size}\n${str}`;
-    }
-    case "MATRIX": {
-      const matrix = generateMatrix(size, minValue, maxValue, pattern);
-      const rows = matrix.map((row) => row.join(" ")).join("\n");
-      return `${size}\n${rows}`;
-    }
-    default:
-      return `${size}\n${"0 ".repeat(size).trim()}`;
-  }
-}
-
-function computeSummary(stressCases: StressCaseResult[]): {
+function computeSummary(performanceCases: PerformanceCaseResult[]): {
   fastestRuntimeMs: number;
   slowestRuntimeMs: number;
   averageRuntimeMs: number;
   maxMemoryKb: number;
   averageMemoryKb: number;
 } | null {
-  if (stressCases.length === 0) return null;
+  if (performanceCases.length === 0) return null;
 
-  const runtimes = stressCases.map((s) => s.runtimeMs);
-  const memories = stressCases.map((s) => s.memoryKb);
+  const runtimes = performanceCases.map((s) => s.runtimeMs);
+  const memories = performanceCases.map((s) => s.memoryKb);
 
   return {
     fastestRuntimeMs: Math.min(...runtimes),
@@ -429,6 +354,115 @@ function computeSummary(stressCases: StressCaseResult[]): {
       memories.reduce((a, b) => a + b, 0) / memories.length,
     ),
   };
+}
+
+async function runPerformanceTestCases(
+  code: string,
+  language: LanguageKey,
+  performanceTestCases: { id: string; name: string; inputFileKey: string; outputFileKey: string }[],
+  constraints: { cppTimeLimitMs: number; javaTimeLimitMs: number; pythonTimeLimitMs: number; jsTimeLimitMs: number } | null,
+): Promise<PerformanceCaseResult[]> {
+  if (performanceTestCases.length === 0) return [];
+
+  const pistonLang = PISTON_LANGUAGE_MAP[language];
+  const pistonUrl = getPistonExecuteUrl();
+
+  const timeLimitMs =
+    constraints?.[`${language}TimeLimitMs` as keyof typeof constraints] as number | undefined ??
+    (language === "cpp" || language === "c" ? 1000 :
+     language === "java" ? 2000 :
+     language === "python" ? 4000 :
+     language === "js" ? 3000 : 2000);
+
+  const results: PerformanceCaseResult[] = [];
+
+  for (const tc of performanceTestCases) {
+    const inputBody = await downloadFromS3(tc.inputFileKey);
+    const expectedOutput = (await downloadFromS3(tc.outputFileKey))
+      .replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+
+    try {
+      const payload: PistonExecuteRequest = {
+        language: pistonLang,
+        version: "*",
+        files:
+          pistonLang === "java"
+            ? [{ name: "Main.java", content: code }]
+            : [{ content: code }],
+        stdin: inputBody,
+      };
+
+      const response = await axios.post<PistonExecutionResult>(pistonUrl, payload, {
+        headers: { "Content-Type": "application/json" },
+        timeout: timeLimitMs + 10000,
+      });
+
+      const run = response.data.run ?? {};
+      const compile = response.data.compile;
+
+      if (compile?.stderr?.trim()) {
+        results.push({
+          id: tc.id,
+          name: tc.name,
+          runtimeMs: 0,
+          memoryKb: 0,
+          inputBytes: Buffer.byteLength(inputBody),
+          status: "RUNTIME_ERROR",
+        });
+        continue;
+      }
+
+      const runtimeMs = Math.round((run.cpu_time ?? 0) * 1000);
+      const memoryKb = (run.memory ?? 0) > 0 ? Math.round((run.memory ?? 0) / 1024) : 0;
+
+      if (runtimeMs > timeLimitMs) {
+        results.push({
+          id: tc.id,
+          name: tc.name,
+          runtimeMs,
+          memoryKb,
+          inputBytes: Buffer.byteLength(inputBody),
+          status: "TIME_LIMIT_EXCEEDED",
+        });
+        continue;
+      }
+
+      const actualOutput = (run.stdout ?? run.output ?? "")
+        .replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+
+      const hasRuntimeError = Boolean(run.stderr?.trim()) ||
+        (typeof run.code === "number" && run.code !== 0);
+
+      let status: PerformanceCaseResult["status"];
+      if (hasRuntimeError) {
+        status = "RUNTIME_ERROR";
+      } else if (actualOutput === expectedOutput) {
+        status = "ACCEPTED";
+      } else {
+        status = "WRONG_ANSWER";
+      }
+
+      results.push({
+        id: tc.id,
+        name: tc.name,
+        runtimeMs,
+        memoryKb,
+        inputBytes: Buffer.byteLength(inputBody),
+        status,
+      });
+    } catch (error: any) {
+      results.push({
+        id: tc.id,
+        name: tc.name,
+        runtimeMs: 0,
+        memoryKb: 0,
+        inputBytes: Buffer.byteLength(inputBody),
+        status: "RUNTIME_ERROR",
+      });
+    }
+  }
+
+  return results;
 }
 
 export async function analyzeRuntime(
@@ -460,6 +494,7 @@ export async function analyzeRuntime(
       runTestCase: true,
       driverCode: true,
       performanceConstraints: true,
+      performanceTestCases: true,
     },
   });
 
@@ -518,7 +553,7 @@ export async function analyzeRuntime(
       if (normalCases.compilationError) {
         return {
           normalCases,
-          stressCases: [],
+          performanceCases: [],
           summary: null,
           compilationError: normalCases.compilationError,
         };
@@ -531,7 +566,7 @@ export async function analyzeRuntime(
             : JSON.stringify(error.response?.data ?? {});
         return {
           normalCases: null,
-          stressCases: [],
+          performanceCases: [],
           summary: null,
           compilationError: `Piston execution failed: ${error.message}. ${details}`,
         };
@@ -540,9 +575,22 @@ export async function analyzeRuntime(
     }
   }
 
+  // Step 2: Run performance test cases from S3
+  let performanceCases: PerformanceCaseResult[] = [];
+  if (problem.performanceTestCases.length > 0) {
+    performanceCases = await runPerformanceTestCases(
+      finalCode,
+      normalizedLanguage,
+      problem.performanceTestCases,
+      problem.performanceConstraints,
+    );
+  }
+
+  const summary = computeSummary(performanceCases);
+
   return {
     normalCases,
-    stressCases: [],
-    summary: null,
+    performanceCases,
+    summary,
   };
 }
