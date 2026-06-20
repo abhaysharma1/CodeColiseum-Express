@@ -232,6 +232,7 @@ async function runNormalCases(
   const run = response.data.run ?? {};
 
   if (compile?.stderr?.trim()) {
+    console.log("Normal Test Case Error: \n" + compile);
     return {
       totalRuntimeMs: 0,
       totalMemoryKb: 0,
@@ -245,7 +246,7 @@ async function runNormalCases(
     };
   }
 
-  const totalRuntimeMs = Math.round((run.cpu_time ?? 0));
+  const totalRuntimeMs = Math.round(run.cpu_time ?? 0);
   const totalMemoryKb =
     (run.memory ?? 0) > 0 ? Math.round((run.memory ?? 0) / 1024) : 0;
 
@@ -359,8 +360,18 @@ function computeSummary(performanceCases: PerformanceCaseResult[]): {
 async function runPerformanceTestCases(
   code: string,
   language: LanguageKey,
-  performanceTestCases: { id: string; name: string; inputFileKey: string; outputFileKey: string }[],
-  constraints: { cppTimeLimitMs: number; javaTimeLimitMs: number; pythonTimeLimitMs: number; jsTimeLimitMs: number } | null,
+  performanceTestCases: {
+    id: string;
+    name: string;
+    inputFileKey: string;
+    outputFileKey: string;
+  }[],
+  constraints: {
+    cppTimeLimitMs: number;
+    javaTimeLimitMs: number;
+    pythonTimeLimitMs: number;
+    jsTimeLimitMs: number;
+  } | null,
 ): Promise<PerformanceCaseResult[]> {
   if (performanceTestCases.length === 0) return [];
 
@@ -368,18 +379,27 @@ async function runPerformanceTestCases(
   const pistonUrl = getPistonExecuteUrl();
 
   const timeLimitMs =
-    constraints?.[`${language}TimeLimitMs` as keyof typeof constraints] as number | undefined ??
-    (language === "cpp" || language === "c" ? 1000 :
-     language === "java" ? 2000 :
-     language === "python" ? 4000 :
-     language === "js" ? 3000 : 2000);
+    (constraints?.[`${language}TimeLimitMs` as keyof typeof constraints] as
+      | number
+      | undefined) ??
+    (language === "cpp" || language === "c"
+      ? 1000
+      : language === "java"
+        ? 2000
+        : language === "python"
+          ? 4000
+          : language === "js"
+            ? 3000
+            : 2000);
 
   const results: PerformanceCaseResult[] = [];
 
   for (const tc of performanceTestCases) {
     const inputBody = await downloadFromS3(tc.inputFileKey);
     const expectedOutput = (await downloadFromS3(tc.outputFileKey))
-      .replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+      .replace(/\r\n/g, "\n")
+      .replace(/\r/g, "\n")
+      .trim();
 
     try {
       const payload: PistonExecuteRequest = {
@@ -392,15 +412,20 @@ async function runPerformanceTestCases(
         stdin: inputBody,
       };
 
-      const response = await axios.post<PistonExecutionResult>(pistonUrl, payload, {
-        headers: { "Content-Type": "application/json" },
-        timeout: timeLimitMs + 10000,
-      });
+      const response = await axios.post<PistonExecutionResult>(
+        pistonUrl,
+        payload,
+        {
+          headers: { "Content-Type": "application/json" },
+          timeout: timeLimitMs + 10000,
+        },
+      );
 
       const run = response.data.run ?? {};
       const compile = response.data.compile;
 
       if (compile?.stderr?.trim()) {
+        console.log("Performance Test Case Error: \n" + compile);
         results.push({
           id: tc.id,
           name: tc.name,
@@ -413,7 +438,8 @@ async function runPerformanceTestCases(
       }
 
       const runtimeMs = Math.round((run.cpu_time ?? 0) * 1000);
-      const memoryKb = (run.memory ?? 0) > 0 ? Math.round((run.memory ?? 0) / 1024) : 0;
+      const memoryKb =
+        (run.memory ?? 0) > 0 ? Math.round((run.memory ?? 0) / 1024) : 0;
 
       if (runtimeMs > timeLimitMs) {
         results.push({
@@ -428,9 +454,12 @@ async function runPerformanceTestCases(
       }
 
       const actualOutput = (run.stdout ?? run.output ?? "")
-        .replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+        .replace(/\r\n/g, "\n")
+        .replace(/\r/g, "\n")
+        .trim();
 
-      const hasRuntimeError = Boolean(run.stderr?.trim()) ||
+      const hasRuntimeError =
+        Boolean(run.stderr?.trim()) ||
         (typeof run.code === "number" && run.code !== 0);
 
       let status: PerformanceCaseResult["status"];
