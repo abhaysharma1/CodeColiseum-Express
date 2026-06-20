@@ -40,6 +40,9 @@ export const createLab = async (
         title: parsed.data.title,
         description: parsed.data.description ?? null,
         creatorId: req.user!.id,
+        aiEnabled: parsed.data.aiEnabled,
+        aiMaxMessages: parsed.data.aiMaxMessages ?? null,
+        aiMaxTokens: parsed.data.aiMaxTokens ?? null,
       },
     });
 
@@ -80,6 +83,9 @@ export const getLabs = async (
         creatorId: lab.creatorId,
         createdAt: lab.createdAt,
         updatedAt: lab.updatedAt,
+        aiEnabled: lab.aiEnabled,
+        aiMaxMessages: lab.aiMaxMessages,
+        aiMaxTokens: lab.aiMaxTokens,
         modulesCount: lab._count.modules,
         assignedGroupsCount: lab._count.assignments,
       })),
@@ -133,9 +139,17 @@ export const updateLab = async (
       return res.status(400).json({ success: false, message: "Validation failed" });
     }
 
+    const data: any = { ...parsed.data };
+
+    // If aiEnabled is explicitly false, clear quota fields
+    if (parsed.data.aiEnabled === false) {
+      data.aiMaxMessages = null;
+      data.aiMaxTokens = null;
+    }
+
     const lab = await prisma.lab.update({
       where: { id: labId },
-      data: parsed.data,
+      data,
     });
 
     res.status(200).json(lab);

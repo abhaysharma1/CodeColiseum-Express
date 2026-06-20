@@ -638,8 +638,9 @@ model AIConversation {
   id String @id @default(cuid())
 
   studentId String
-  groupId   String
-  examId    String
+  groupId   String?  // set for exam context, null for lab context
+  labId     String?  // set for lab context, null for exam context
+  examId    String?  // set for exam context, null for lab context
   problemId String
 
   messageCount Int @default(0)
@@ -651,13 +652,15 @@ model AIConversation {
   updatedAt DateTime @updatedAt
 
   student User    @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  group   Group   @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  exam    Exam    @relation(fields: [examId], references: [id], onDelete: Cascade)
+  group   Group?  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  lab     Lab?    @relation(fields: [labId], references: [id], onDelete: Cascade)
+  exam    Exam?   @relation(fields: [examId], references: [id], onDelete: Cascade)
   problem Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
 
   messages AIMessage[]
 
   @@unique([studentId, examId, problemId])
+  @@unique([studentId, labId, problemId])
 }
 
 model AIMessage {
@@ -984,11 +987,16 @@ model Lab {
   creatorId String
   creator   User   @relation("CreatedLabs", fields: [creatorId], references: [id], onDelete: Cascade)
 
+  aiEnabled           Boolean @default(false)
+  aiMaxMessages       Int? // per student per lab per problem
+  aiMaxTokens         Int? // per student per lab per problem
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   assignments LabAssignment[]
   modules     LabModule[]
+  aiconversations AIConversation[]
 
   @@index([creatorId])
 }
