@@ -615,6 +615,8 @@ export async function analyzeRuntime(
     );
   }
 
+  console.log(performanceCases)
+
   const summary = computeSummary(performanceCases);
 
   return {
