@@ -322,6 +322,7 @@ async function runNormalCases(
       input: normalizedCases[i].input,
       expectedOutput: normalizedCases[i].output,
       actualOutput: caseBlocks,
+      stderr: hasCompileOrRuntimeError ? (run.stderr ?? "").trim() || undefined : undefined,
     });
   }
 
@@ -436,6 +437,7 @@ async function runPerformanceTestCases(
           inputBytes: Buffer.byteLength(inputBody),
           status: "RUNTIME_ERROR",
           input: inputBody,
+          stderr: compile.stderr.trim(),
         });
         continue;
       }
@@ -490,6 +492,7 @@ async function runPerformanceTestCases(
         input: inputBody,
         expectedOutput,
         actualOutput,
+        stderr: hasRuntimeError ? (run.stderr ?? "").trim() || undefined : undefined,
       });
     } catch (error: any) {
       results.push({
@@ -500,6 +503,7 @@ async function runPerformanceTestCases(
         inputBytes: Buffer.byteLength(inputBody),
         status: "RUNTIME_ERROR",
         input: inputBody,
+        stderr: error?.message ?? "Unknown error",
       });
     }
   }

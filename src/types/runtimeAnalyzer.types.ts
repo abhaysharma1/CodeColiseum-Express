@@ -4,6 +4,7 @@ export interface NormalCaseResult {
   input?: string;
   expectedOutput?: string;
   actualOutput?: string;
+  stderr?: string;
 }
 
 export interface NormalCasesResult {
@@ -25,6 +26,7 @@ export interface PerformanceCaseResult {
   input?: string;
   expectedOutput?: string;
   actualOutput?: string;
+  stderr?: string;
 }
 
 export interface RuntimeAnalysisSummary {
