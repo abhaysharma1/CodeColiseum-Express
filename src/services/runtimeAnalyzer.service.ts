@@ -460,11 +460,11 @@ async function runPerformanceTestCases(
       }
 
       const actualOutput = (run.stdout ?? run.output ?? "")
-        .replace("_CASE_START_", "")
-        .replace("_CASE_END_", "")
-        .replace(/\r\n/g, "\n")
-        .replace(/\r/g, "\n")
-        .trim();
+        // .replace("_CASE_START_", "")
+        // .replace("_CASE_END_", "")
+        // .replace(/\r\n/g, "\n")
+        // .replace(/\r/g, "\n")
+        // .trim();
 
       const hasRuntimeError =
         Boolean(run.stderr?.trim()) ||
