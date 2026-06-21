@@ -322,7 +322,9 @@ async function runNormalCases(
       input: normalizedCases[i].input,
       expectedOutput: normalizedCases[i].output,
       actualOutput: caseBlocks,
-      stderr: hasCompileOrRuntimeError ? (run.stderr ?? "").trim() || undefined : undefined,
+      stderr: hasCompileOrRuntimeError
+        ? (run.stderr ?? "").trim() || undefined
+        : undefined,
     });
   }
 
@@ -460,11 +462,10 @@ async function runPerformanceTestCases(
       }
 
       const actualOutput = (run.stdout ?? run.output ?? "")
-        // .replace("_CASE_START_", "")
-        // .replace("_CASE_END_", "")
-        // .replace(/\r\n/g, "\n")
-        // .replace(/\r/g, "\n")
-        // .trim();
+        .replace(/_CASE_(START|END)_/g, "")
+        .replace(/\r\n/g, "\n")
+        .replace(/\r/g, "\n")
+        .trim();
 
       const hasRuntimeError =
         Boolean(run.stderr?.trim()) ||
@@ -492,7 +493,9 @@ async function runPerformanceTestCases(
         input: inputBody,
         expectedOutput,
         actualOutput,
-        stderr: hasRuntimeError ? (run.stderr ?? "").trim() || undefined : undefined,
+        stderr: hasRuntimeError
+          ? (run.stderr ?? "").trim() || undefined
+          : undefined,
       });
     } catch (error: any) {
       results.push({
