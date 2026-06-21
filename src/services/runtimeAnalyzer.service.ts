@@ -430,7 +430,6 @@ async function runPerformanceTestCases(
       const compile = response.data.compile;
 
       if (compile?.stderr?.trim()) {
-        console.log("Performance Test Case Error: \n" + compile);
         results.push({
           id: tc.id,
           name: tc.name,
@@ -470,9 +469,6 @@ async function runPerformanceTestCases(
       const hasRuntimeError =
         Boolean(run.stderr?.trim()) ||
         (typeof run.code === "number" && run.code !== 0);
-
-      console.log("Expected Output: \n :", expectedOutput);
-      console.log("Actual Output: \n :", actualOutput);
 
       let status: PerformanceCaseResult["status"];
       if (hasRuntimeError) {
