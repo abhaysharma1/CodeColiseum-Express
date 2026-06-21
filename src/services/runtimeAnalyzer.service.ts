@@ -319,6 +319,9 @@ async function runNormalCases(
         : hasCompileOrRuntimeError
           ? "RUNTIME_ERROR"
           : "WRONG_ANSWER",
+      input: normalizedCases[i].input,
+      expectedOutput: normalizedCases[i].output,
+      actualOutput: caseBlocks,
     });
   }
 
@@ -432,6 +435,7 @@ async function runPerformanceTestCases(
           memoryKb: 0,
           inputBytes: Buffer.byteLength(inputBody),
           status: "RUNTIME_ERROR",
+          input: inputBody,
         });
         continue;
       }
@@ -448,6 +452,7 @@ async function runPerformanceTestCases(
           memoryKb,
           inputBytes: Buffer.byteLength(inputBody),
           status: "TIME_LIMIT_EXCEEDED",
+          input: inputBody,
         });
         continue;
       }
@@ -482,6 +487,9 @@ async function runPerformanceTestCases(
         memoryKb,
         inputBytes: Buffer.byteLength(inputBody),
         status,
+        input: inputBody,
+        expectedOutput,
+        actualOutput,
       });
     } catch (error: any) {
       results.push({
@@ -491,6 +499,7 @@ async function runPerformanceTestCases(
         memoryKb: 0,
         inputBytes: Buffer.byteLength(inputBody),
         status: "RUNTIME_ERROR",
+        input: inputBody,
       });
     }
   }

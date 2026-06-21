@@ -1,6 +1,9 @@
 export interface NormalCaseResult {
   testcaseId: string;
   status: 'ACCEPTED' | 'WRONG_ANSWER' | 'RUNTIME_ERROR';
+  input?: string;
+  expectedOutput?: string;
+  actualOutput?: string;
 }
 
 export interface NormalCasesResult {
@@ -19,6 +22,9 @@ export interface PerformanceCaseResult {
   memoryKb: number;
   inputBytes: number;
   status: 'ACCEPTED' | 'WRONG_ANSWER' | 'RUNTIME_ERROR' | 'TIME_LIMIT_EXCEEDED';
+  input?: string;
+  expectedOutput?: string;
+  actualOutput?: string;
 }
 
 export interface RuntimeAnalysisSummary {
