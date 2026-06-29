@@ -13,6 +13,9 @@ import {
   SubmitCodeRequest,
 } from "../services/codeSubmission.service";
 import { runCodeService, RunCodeRequest } from "../services/codeRunner.service";
+import { normalizeProblemTestCases } from "./problem.controllers";
+
+
 
 // Controller for running code against test cases (exam context)
 export const runCode = async (
@@ -222,7 +225,9 @@ export const getTestCases = async (
       return next(error);
     }
 
-    res.status(200).json(testCases);
+    const normalizedCases = normalizeProblemTestCases(testCases.cases);
+
+    res.status(200).json(normalizedCases);
   } catch (error) {
     next(error);
   }

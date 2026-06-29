@@ -79,7 +79,7 @@ const splitBundledInput = (input: string, expectedCases: number) => {
   );
 };
 
-const normalizeProblemTestCases = (rawCases: unknown): NormalizedTestCase[] => {
+export const normalizeProblemTestCases = (rawCases: unknown): NormalizedTestCase[] => {
   let parsedCases = rawCases;
 
   if (typeof parsedCases === "string") {
