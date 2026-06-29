@@ -227,7 +227,10 @@ export const getTestCases = async (
 
     const normalizedCases = normalizeProblemTestCases(testCases.cases);
 
-    res.status(200).json(normalizedCases);
+    res.status(200).json({
+      ...testCases,
+      cases: normalizedCases,
+    });
   } catch (error) {
     next(error);
   }
