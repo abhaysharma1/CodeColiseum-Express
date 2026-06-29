@@ -16,6 +16,8 @@ import {
 	getAnalyticsProblemStudents,
 	getAnalyticsExams,
 	getAnalyticsExamDetails,
+	exportAnalyticsCSV,
+	exportAnalyticsPDF,
 } from "@/controllers/teacher.stats.controllers";
 import { requirePermission } from "@/middleware/permission.middleware";
 import { PERMISSIONS } from "@/permissions/permission.constants";
@@ -150,6 +152,18 @@ router.get(
 	"/analytics/exams/:examId/details",
 	requirePermission(PERMISSIONS.ANALYTICS_VIEW, getGroupIdFromQuery),
 	getAnalyticsExamDetails
+);
+
+router.get(
+	"/analytics/export-csv",
+	requirePermission(PERMISSIONS.ANALYTICS_VIEW, getGroupIdFromQuery),
+	exportAnalyticsCSV
+);
+
+router.get(
+	"/analytics/export-pdf",
+	requirePermission(PERMISSIONS.ANALYTICS_VIEW, getGroupIdFromQuery),
+	exportAnalyticsPDF
 );
 
 export default router;

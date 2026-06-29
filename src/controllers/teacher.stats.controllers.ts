@@ -487,8 +487,8 @@ export const getAnalyticsOverview = async (
       overallPassRate: groupStats?.overallPassRate || 0,
       weakestProblem: weakestProblemData,
       hardestProblem: hardestProblemData,
-      avgAttemppts: studentStats.length > 0 
-        ? studentStats.reduce((sum, s) => sum + 1, 0) / studentStats.length 
+      avgAttempts: studentStats.length > 0 
+        ? studentStats.reduce((sum, s) => sum + (s as any).avgAttemptsPerProblem || 0, 0) / studentStats.length 
         : 0,
     });
   } catch (error) {
@@ -1070,6 +1070,311 @@ export const getAnalyticsExamDetails = async (
       },
       problemDifficulties,
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /teacher/analytics/export-csv
+ * Export all analytics data for a group as CSV
+ */
+export const exportAnalyticsCSV = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const user = req.user;
+    const groupId = String(req.query.groupId);
+
+    if (!groupId) return res.status(400).json({ error: "groupId is required" });
+
+    const group = await prisma.group.findUnique({ where: { id: groupId } });
+    if (!group) return res.status(404).json({ error: "Group not found" });
+    if (!(await canViewGroupAnalytics(user.id, groupId, group.creatorId)))
+      return res.status(403).json({ error: "Not authorized" });
+
+    const [students, problems, exams] = await Promise.all([
+      prisma.studentOverallStats.findMany({
+        where: { groupId },
+        include: {
+          student: { select: { id: true, name: true, email: true } },
+        },
+        orderBy: { avgScore: "desc" },
+      }),
+      prisma.groupProblemStats.findMany({
+        where: { groupId },
+        include: {
+          problem: { select: { id: true, number: true, title: true, difficulty: true } },
+        },
+        orderBy: { attemptedCount: "desc" },
+      }),
+      prisma.exam.findMany({
+        where: { examGroups: { some: { groupId } } },
+        orderBy: { endDate: "desc" },
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          startDate: true,
+          endDate: true,
+          durationMin: true,
+          groupExamAnalytics: {
+            where: { groupId },
+            take: 1,
+          },
+        },
+      }),
+    ]);
+
+    const rows: string[] = [];
+
+    const esc = (v: unknown) => {
+      const s = String(v ?? "");
+      return s.includes(",") || s.includes('"') || s.includes("\n")
+        ? `"${s.replace(/"/g, '""')}"`
+        : s;
+    };
+
+    rows.push("=== Students ===");
+    rows.push("Name,Email,Avg Score (%),Total Attempts,Avg Attempts/Problem,Completion (%),Last Active");
+    students.forEach((s) => {
+      rows.push([
+        esc(s.student.name),
+        esc(s.student.email),
+        s.avgScore.toFixed(1),
+        s.totalAttempts,
+        s.avgAttemptsPerProblem.toFixed(1),
+        s.completionPercentage.toFixed(1),
+        s.lastActive ? new Date(s.lastActive).toISOString() : "",
+      ].join(","));
+    });
+
+    rows.push("");
+    rows.push("=== Problems ===");
+    rows.push("Number,Title,Difficulty,Tier,Success Rate (%),Failure Rate (%),Attempted,Total Attempts,Avg Time (min),Accepted");
+    problems.forEach((p) => {
+      rows.push([
+        p.problem.number,
+        esc(p.problem.title),
+        esc(p.problem.difficulty),
+        p.difficultyTier,
+        p.successRate.toFixed(1),
+        p.failureRate.toFixed(1),
+        `${p.attemptedCount}/${p.totalStudents}`,
+        p.totalAttempts,
+        p.avgTime.toFixed(1),
+        p.acceptedCount,
+      ].join(","));
+    });
+
+    rows.push("");
+    rows.push("=== Exams ===");
+    rows.push("Title,Status,Duration (min),Avg Score (%),Completion Rate (%),Enrolled,Completed,Attempted");
+    exams.forEach((e) => {
+      const ga = e.groupExamAnalytics[0];
+      rows.push([
+        esc(e.title),
+        e.status,
+        e.durationMin,
+        ga ? ga.avgScore.toFixed(1) : "",
+        ga ? (ga.completionRate * 100).toFixed(1) : "",
+        ga ? ga.totalEnrolled : "",
+        ga ? ga.totalCompleted : "",
+        ga ? ga.totalAttempted : "",
+      ].join(","));
+    });
+
+    const csv = rows.join("\r\n");
+    const filename = `analytics_${groupId}_${new Date().toISOString().split("T")[0]}.csv`;
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    return res.status(200).send(csv);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /teacher/analytics/export-pdf
+ * Export all analytics data for a group as PDF
+ */
+export const exportAnalyticsPDF = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const user = req.user;
+    const groupId = String(req.query.groupId);
+
+    if (!groupId) return res.status(400).json({ error: "groupId is required" });
+
+    const group = await prisma.group.findUnique({ where: { id: groupId } });
+    if (!group) return res.status(404).json({ error: "Group not found" });
+    if (!(await canViewGroupAnalytics(user.id, groupId, group.creatorId)))
+      return res.status(403).json({ error: "Not authorized" });
+
+    const [groupStats, students, problems, exams] = await Promise.all([
+      prisma.groupOverallStats.findUnique({ where: { groupId } }),
+      prisma.studentOverallStats.findMany({
+        where: { groupId },
+        include: {
+          student: { select: { id: true, name: true, email: true } },
+        },
+        orderBy: { avgScore: "desc" },
+      }),
+      prisma.groupProblemStats.findMany({
+        where: { groupId },
+        include: {
+          problem: { select: { id: true, number: true, title: true, difficulty: true } },
+        },
+        orderBy: { attemptedCount: "desc" },
+      }),
+      prisma.exam.findMany({
+        where: { examGroups: { some: { groupId } } },
+        orderBy: { endDate: "desc" },
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          startDate: true,
+          endDate: true,
+          durationMin: true,
+          groupExamAnalytics: {
+            where: { groupId },
+            take: 1,
+          },
+        },
+      }),
+    ]);
+
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const PDFDocument = require("pdfkit");
+
+    const doc = new PDFDocument({ margin: 40, size: "A4" });
+
+    const filename = `analytics_${groupId}_${new Date().toISOString().split("T")[0]}.pdf`;
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    doc.pipe(res);
+
+    const font = "Helvetica";
+    const fontBold = "Helvetica-Bold";
+
+    // ---------- Helper functions ----------
+    const h1 = (text: string, y?: number) => {
+      doc.font(fontBold).fontSize(18).text(text, 40, y ?? doc.y, { underline: true });
+      doc.moveDown(0.5);
+    };
+    const h2 = (text: string) => {
+      doc.font(fontBold).fontSize(14).text(text, 40, doc.y + 8);
+      doc.moveDown(0.3);
+    };
+    const p = (text: string) => {
+      doc.font(font).fontSize(10).text(text, 40, doc.y, { align: "justify" });
+      doc.moveDown(0.2);
+    };
+    const tableHeader = (headers: string[], widths: number[]) => {
+      doc.font(fontBold).fontSize(8);
+      let x = 40;
+      headers.forEach((hdr, i) => {
+        doc.text(hdr, x, doc.y, { width: widths[i], align: "left" });
+        x += widths[i];
+      });
+      doc.moveDown(0.3);
+    };
+    const tableRow = (cells: string[], widths: number[]) => {
+      doc.font(font).fontSize(7.5);
+      let x = 40;
+      const startY = doc.y;
+      let maxH = 0;
+      cells.forEach((cell, i) => {
+        const cellHeight = doc.heightOfString(cell, { width: widths[i] });
+        if (cellHeight > maxH) maxH = cellHeight;
+        doc.text(cell, x, startY, { width: widths[i], align: "left" });
+        x += widths[i];
+      });
+      doc.y = startY + Math.max(maxH, 12);
+      if (doc.y > 750) doc.addPage();
+    };
+    const checkPage = () => {
+      if (doc.y > 735) doc.addPage();
+    };
+
+    // ---------- Title ----------
+    h1("Teacher Analytics Report");
+    p(`Group: ${group.name}`);
+    p(`Generated: ${new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}`);
+    doc.moveDown(0.5);
+
+    // ---------- Summary ----------
+    h2("Summary");
+    if (groupStats) {
+      p(`Total Students: ${groupStats.totalStudents}`);
+      p(`Average Score: ${groupStats.avgScoreAllExams.toFixed(1)}%`);
+      p(`Pass Rate: ${(groupStats.overallPassRate * 100).toFixed(1)}%`);
+    }
+    doc.moveDown(0.5);
+
+    // ---------- Students ----------
+    h2(`Students (${students.length})`);
+    checkPage();
+    const studentWidths = [20, 110, 55, 50, 55, 55];
+    tableHeader(["#", "Name", "Avg Score", "Attempts", "Completion", "Last Active"], studentWidths);
+    students.forEach((s, idx) => {
+      checkPage();
+      tableRow([
+        `${idx + 1}`,
+        s.student.name,
+        `${s.avgScore.toFixed(1)}%`,
+        `${s.totalAttempts}`,
+        `${s.completionPercentage.toFixed(1)}%`,
+        s.lastActive ? new Date(s.lastActive).toLocaleDateString() : "-",
+      ], studentWidths);
+    });
+    doc.moveDown(0.5);
+
+    // ---------- Problems ----------
+    h2(`Problems (${problems.length})`);
+    checkPage();
+    const problemWidths = [18, 95, 50, 55, 45, 50, 45];
+    tableHeader(["#", "Title", "Tier", "Success", "Attempted", "Avg Time", "Accepted"], problemWidths);
+    problems.forEach((p, idx) => {
+      checkPage();
+      tableRow([
+        `${idx + 1}`,
+        `#${p.problem.number} ${p.problem.title}`,
+        p.difficultyTier,
+        `${p.successRate.toFixed(1)}%`,
+        `${p.attemptedCount}/${p.totalStudents}`,
+        `${p.avgTime.toFixed(0)} min`,
+        `${p.acceptedCount}`,
+      ], problemWidths);
+    });
+    doc.moveDown(0.5);
+
+    // ---------- Exams ----------
+    h2(`Exams (${exams.length})`);
+    checkPage();
+    const examWidths = [18, 95, 50, 50, 55, 50];
+    tableHeader(["#", "Title", "Status", "Avg Score", "Completion", "Students"], examWidths);
+    exams.forEach((e, idx) => {
+      checkPage();
+      const ga = e.groupExamAnalytics[0];
+      tableRow([
+        `${idx + 1}`,
+        e.title,
+        e.status,
+        ga ? `${ga.avgScore.toFixed(1)}%` : "-",
+        ga ? `${(ga.completionRate * 100).toFixed(1)}%` : "-",
+        ga ? `${ga.totalCompleted}/${ga.totalEnrolled}` : "-",
+      ], examWidths);
+    });
+
+    doc.end();
   } catch (error) {
     next(error);
   }
