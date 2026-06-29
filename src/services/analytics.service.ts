@@ -7,113 +7,6 @@ import { ExecutionStatus } from "../../generated/prisma/enums";
  */
 
 // ============================================================================
-// REAL-TIME UPDATES (called on each submission)
-// ============================================================================
-
-/**
- * Update student's last active timestamp and attempt info
- * Called after each submission to track activity
- */
-export async function updateStudentActivity(
-  studentId: string,
-  groupId: string,
-  _problemId: string,
-) {
-  try {
-    await prisma.studentOverallStats.updateMany({
-      where: { studentId, groupId },
-      data: {
-        lastActive: new Date(),
-      },
-    });
-  } catch (error) {
-    console.error("Error updating student activity:", error);
-    // Don't throw - activity tracking is non-critical
-  }
-}
-
-/**
- * Update student problem stats with submission time
- * Called after each submission
- */
-export async function updateStudentProblemSubmissionTime(
-  studentId: string,
-  groupId: string,
-  problemId: string,
-  executionTime: number | null,
-) {
-  if (!executionTime) return;
-
-  try {
-    // Get current stats to calculate running average
-    const currentStats = await prisma.studentProblemStats.findUnique({
-      where: { studentId_problemId_groupId: { studentId, problemId, groupId } },
-      select: { attempts: true, totalTime: true, avgTime: true },
-    });
-
-    if (!currentStats) return;
-
-    const executionTimeMinutes = executionTime / 1000 / 60; // Convert ms to minutes
-    const newTotalTime = (currentStats.totalTime || 0) + executionTimeMinutes;
-    const newAvgTime = newTotalTime / currentStats.attempts;
-
-    await prisma.studentProblemStats.update({
-      where: { studentId_problemId_groupId: { studentId, problemId, groupId } },
-      data: {
-        totalTime: newTotalTime,
-        avgTime: newAvgTime,
-        lastAttemptAt: new Date(),
-      },
-    });
-  } catch (error) {
-    console.error("Error updating student problem submission time:", error);
-  }
-}
-
-/**
- * Update group problem stats with aggregate time data
- * Called after each submission
- */
-export async function updateGroupProblemAverageTime(
-  groupId: string,
-  problemId: string,
-  executionTime: number | null,
-) {
-  if (!executionTime) return;
-
-  try {
-    const executionTimeMs = executionTime;
-    const executionTimeSecs = executionTimeMs / 1000;
-
-    // Get current stats to calculate running average
-    const currentStats = await prisma.groupProblemStats.findUnique({
-      where: { groupId_problemId: { groupId, problemId } },
-      select: {
-        totalAttempts: true,
-        avgRuntime: true,
-      },
-    });
-
-    if (!currentStats || currentStats.totalAttempts === 0) return;
-
-    // Running average formula: (old_avg * (n-1) + new_value) / n
-    const newAvgRuntime =
-      (currentStats.avgRuntime * (currentStats.totalAttempts - 1) +
-        executionTimeSecs) /
-      currentStats.totalAttempts;
-
-    await prisma.groupProblemStats.update({
-      where: { groupId_problemId: { groupId, problemId } },
-      data: {
-        avgRuntime: newAvgRuntime,
-      },
-    });
-  } catch (error) {
-    console.error("Error updating group problem average time:", error);
-  }
-}
-
-// ============================================================================
 // BATCH UPDATES (called when exam finalizes - cron job)
 // ============================================================================
 
@@ -340,62 +233,6 @@ export async function recalculateStudentStats(
 }
 
 /**
- * Detect weakest and hardest problems for a group
- * Weakest = lowest success rate
- * Hardest = most failed by students
- */
-export async function detectProblemDifficultyTiers(groupId: string) {
-  try {
-    const problems = await prisma.groupProblemStats.findMany({
-      where: { groupId },
-      select: {
-        problemId: true,
-        successRate: true,
-        failureRate: true,
-      },
-      orderBy: { successRate: "asc" },
-      take: 20,
-    });
-
-    for (const problem of problems) {
-      // Assign difficulty tier based on success rate
-      let tier = "medium";
-      if (problem.successRate > 75) {
-        tier = "easy";
-      } else if (problem.successRate < 40) {
-        tier = "hard";
-      }
-
-      await prisma.groupProblemStats.update({
-        where: { groupId_problemId: { groupId, problemId: problem.problemId } },
-        data: { difficultyTier: tier },
-      });
-    }
-
-    // Get weakest and hardest problems
-    const weakest = await prisma.groupProblemStats.findFirst({
-      where: { groupId },
-      orderBy: { successRate: "asc" },
-      select: { problemId: true },
-    });
-
-    const hardest = await prisma.groupProblemStats.findFirst({
-      where: { groupId },
-      orderBy: { failureRate: "desc" },
-      select: { problemId: true },
-    });
-
-    return {
-      weakestProblemId: weakest?.problemId,
-      hardestProblemId: hardest?.problemId,
-    };
-  } catch (error) {
-    console.error("Error detecting problem difficulty tiers:", error);
-    return {};
-  }
-}
-
-/**
  * Calculate group-wide completion rate
  * Percentage of students with at least 1 completed exam
  */
@@ -422,13 +259,186 @@ export async function calculateGroupCompletionRate(groupId: string): Promise<num
 }
 
 /**
+ * Recalculate all per-problem and per-student-problem stats for a group
+ * Computes and upserts GroupProblemStats and StudentProblemStats from raw submission data
+ * Called after exam finalization to refresh derived metrics
+ */
+export async function recalculateGroupProblemStats(groupId: string) {
+  try {
+    const members = await prisma.groupMember.findMany({
+      where: { groupId },
+      select: { userId: true },
+    });
+    const studentIds = members.map(m => m.userId);
+
+    const examProblems = await prisma.examProblem.findMany({
+      where: { exam: { examGroups: { some: { groupId } } } },
+      select: { problemId: true },
+    });
+    const problemIds = [...new Set(examProblems.map(ep => ep.problemId))];
+
+    if (studentIds.length === 0 || problemIds.length === 0) {
+      return { weakestProblemId: undefined, hardestProblemId: undefined };
+    }
+
+    for (const problemId of problemIds) {
+      const rawSubmissions = await prisma.submission.findMany({
+        where: {
+          problemId,
+          userId: { in: studentIds },
+          exam: { examGroups: { some: { groupId } } },
+        },
+        orderBy: { createdAt: "asc" },
+        select: {
+          userId: true,
+          status: true,
+          executionTime: true,
+          memory: true,
+          createdAt: true,
+        },
+      });
+
+      const submissions = rawSubmissions.filter((s): s is typeof s & Record<"userId", string> => s.userId !== null);
+
+      if (submissions.length === 0) continue;
+
+      // Group submissions by student
+      const byStudent = new Map<string, typeof submissions>();
+      for (const sub of submissions) {
+        if (!byStudent.has(sub.userId)) {
+          byStudent.set(sub.userId, []);
+        }
+        byStudent.get(sub.userId)!.push(sub);
+      }
+
+      let attemptedCount = 0;
+      let acceptedCount = 0;
+      let totalSubmissionsCount = 0;
+      let totalAvgTime = 0;
+      let totalRuntime = 0;
+      let totalMemory = 0;
+      let studentWithStatsCount = 0;
+
+      for (const [studentId, subs] of byStudent) {
+        const attempts = subs.length;
+        const accepted = subs.some(s => s.status === ExecutionStatus.ACCEPTED);
+        const acceptedSubs = subs.filter(s => s.status === ExecutionStatus.ACCEPTED).length;
+        const successRate = attempts > 0 ? (acceptedSubs / attempts) * 100 : 0;
+        const totalTime = subs.reduce((sum, s) => sum + (s.executionTime || 0) / 1000 / 60, 0);
+        const avgTime = attempts > 0 ? totalTime / attempts : 0;
+
+        await prisma.studentProblemStats.upsert({
+          where: {
+            studentId_problemId_groupId: { studentId, problemId, groupId },
+          },
+          create: {
+            studentId,
+            problemId,
+            groupId,
+            attempts,
+            solved: accepted,
+            isWeak: successRate < 50,
+            successRate,
+            avgTime,
+            totalTime,
+            lastAttemptAt: subs[subs.length - 1].createdAt,
+            firstAttemptAt: subs[0].createdAt,
+          },
+          update: {
+            attempts,
+            solved: accepted,
+            isWeak: successRate < 50,
+            successRate,
+            avgTime,
+            totalTime,
+            lastAttemptAt: subs[subs.length - 1].createdAt,
+          },
+        });
+
+        attemptedCount++;
+        if (accepted) acceptedCount++;
+        totalSubmissionsCount += attempts;
+        totalAvgTime += avgTime;
+        studentWithStatsCount++;
+
+        for (const s of subs) {
+          totalRuntime += (s.executionTime || 0) / 1000;
+          totalMemory += (s.memory || 0);
+        }
+      }
+
+      const successRate = attemptedCount > 0 ? (acceptedCount / attemptedCount) * 100 : 0;
+      const failureRate = 100 - successRate;
+      const avgTime = studentWithStatsCount > 0 ? totalAvgTime / studentWithStatsCount : 0;
+      const avgRuntime = submissions.length > 0 ? totalRuntime / submissions.length : 0;
+      const avgMemory = submissions.length > 0 ? totalMemory / submissions.length : 0;
+
+      let difficultyTier = "medium";
+      if (successRate > 75) difficultyTier = "easy";
+      else if (successRate < 40) difficultyTier = "hard";
+
+      await prisma.groupProblemStats.upsert({
+        where: { groupId_problemId: { groupId, problemId } },
+        create: {
+          groupId,
+          problemId,
+          totalStudents: studentIds.length,
+          attemptedCount,
+          acceptedCount,
+          totalAttempts: totalSubmissionsCount,
+          successRate,
+          failureRate,
+          avgTime,
+          avgRuntime,
+          avgMemory,
+          difficultyTier,
+        },
+        update: {
+          totalStudents: studentIds.length,
+          attemptedCount,
+          acceptedCount,
+          totalAttempts: totalSubmissionsCount,
+          successRate,
+          failureRate,
+          avgTime,
+          avgRuntime,
+          avgMemory,
+          difficultyTier,
+        },
+      });
+    }
+
+    // Return weakest/hardest problem IDs for GroupOverallStats
+    const weakest = await prisma.groupProblemStats.findFirst({
+      where: { groupId },
+      orderBy: { successRate: "asc" },
+      select: { problemId: true },
+    });
+
+    const hardest = await prisma.groupProblemStats.findFirst({
+      where: { groupId },
+      orderBy: { failureRate: "desc" },
+      select: { problemId: true },
+    });
+
+    return {
+      weakestProblemId: weakest?.problemId,
+      hardestProblemId: hardest?.problemId,
+    };
+  } catch (error) {
+    console.error("Error recalculating group problem stats:", error);
+    return { weakestProblemId: undefined, hardestProblemId: undefined };
+  }
+}
+
+/**
  * Recalculate all stats for a group
  * Called after exam finalization to refresh derived metrics
  */
 export async function recalculateGroupStats(groupId: string) {
   try {
     const { weakestProblemId, hardestProblemId } =
-      await detectProblemDifficultyTiers(groupId);
+      await recalculateGroupProblemStats(groupId);
     const completionRate = await calculateGroupCompletionRate(groupId);
 
     // Calculate active students (last 7 days)
