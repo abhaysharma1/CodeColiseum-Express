@@ -30,6 +30,7 @@ export type ExamResultResponse = {
     submittedAt: Date | null;
     totalScore: number;
   };
+  maxScore: number;
   finalScore: number;
   submissionReports: Array<{
     problemId: string;

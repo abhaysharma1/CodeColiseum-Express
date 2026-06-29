@@ -424,6 +424,7 @@ export const submitTest = async (
 
     const examDetails = await prisma.exam.findUnique({
       where: { id: examId },
+      include: { problems: true },
     });
 
     if (!examDetails) {
@@ -472,7 +473,9 @@ export const submitTest = async (
       scoreMap.set(s.problemId, Math.max(prevScore, prev));
     }
 
-    const finalScore = Array.from(scoreMap.values()).reduce((a, b) => a + b, 0);
+    const problemCount = examDetails.problems.length;
+    const rawSum = Array.from(scoreMap.values()).reduce((a, b) => a + b, 0);
+    const finalScore = problemCount > 0 ? Math.round(rawSum / problemCount) : 0;
 
     // Update the exam attempt to submitted status
     const attempt = await prisma.examAttempt.update({

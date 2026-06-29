@@ -279,6 +279,7 @@ export async function getExamResult(
         submittedAt: examAttempt.submittedAt,
         totalScore: examAttempt.totalScore,
       },
+      maxScore: 100,
       finalScore,
       submissionReports,
       ranking: {

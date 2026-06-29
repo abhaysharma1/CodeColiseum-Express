@@ -47,33 +47,27 @@ export const getOrgAnalyticsOverview = async (
       const groups = await prisma.group.findMany({
         select: {
           id: true,
-          groupOverallStats: true,
           members: true,
         },
       });
 
       let totalStudents = 0;
-      let totalScore = 0;
-      let totalPassRate = 0;
-      let completedStudents = 0;
-
       for (const group of groups) {
         totalStudents += group.members.length;
-        if (group.groupOverallStats) {
-          totalScore += group.groupOverallStats.avgScoreAllExams || 0;
-          totalPassRate += group.groupOverallStats.overallPassRate || 0;
-        }
       }
 
-      const avgScore = groups.length > 0 ? totalScore / groups.length : 0;
-      const avgPassRate = groups.length > 0 ? totalPassRate / groups.length : 0;
+      // Compute org-wide avgScore directly from all exam results
+      const scoreAgg = await prisma.examResult.aggregate({
+        _avg: { score: true },
+      });
+      const avgScore = scoreAgg._avg.score ?? 0;
 
       return res.status(200).json({
         totalGroups: groups.length,
         totalStudents,
-        avgScore,
-        completionRate: avgPassRate * 100,
-        overallPassRate: avgPassRate * 100,
+        avgScore: Math.round(avgScore * 100) / 100,
+        completionRate: 0,
+        overallPassRate: 0,
       });
     }
 
