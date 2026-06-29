@@ -96,6 +96,15 @@ export const getTestProblems = async (
       where: {
         examId: examDetails.id,
       },
+      include: {
+        problem: {
+          select: {
+            title: true,
+            difficulty: true,
+            number: true,
+          },
+        },
+      },
     });
 
     if (!examProblems || examProblems.length === 0) {
