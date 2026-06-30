@@ -1,4 +1,5 @@
 import prisma from "@/utils/prisma";
+import { GLOBAL_ROLE_IDS } from "@/permissions/role.constants";
 import type {
   AssessmentDTO,
   AssessmentResultsDTO,
@@ -18,7 +19,98 @@ export async function getLabAssignments(labId: string) {
   }));
 }
 
+// ── Read access (creator OR assigned teacher) ──
+
 export async function getTeacherLabOrThrow(userId: string, labId: string) {
+  const lab = await prisma.lab.findUnique({
+    where: { id: labId },
+    include: {
+      teachers: {
+        where: { userId },
+        select: { id: true },
+      },
+    },
+  });
+  if (!lab) {
+    const err = new Error("Lab not found");
+    (err as any).status = 404;
+    throw err;
+  }
+  if (lab.creatorId !== userId && lab.teachers.length === 0) {
+    const err = new Error("Forbidden");
+    (err as any).status = 403;
+    throw err;
+  }
+  return lab;
+}
+
+export async function getTeacherModuleOrThrow(
+  userId: string,
+  moduleId: string,
+) {
+  const module = await prisma.labModule.findUnique({
+    where: { id: moduleId },
+    include: {
+      lab: {
+        include: {
+          teachers: {
+            where: { userId },
+            select: { id: true },
+          },
+        },
+      },
+    },
+  });
+  if (!module) {
+    const err = new Error("Module not found");
+    (err as any).status = 404;
+    throw err;
+  }
+  if (module.lab.creatorId !== userId && module.lab.teachers.length === 0) {
+    const err = new Error("Forbidden");
+    (err as any).status = 403;
+    throw err;
+  }
+  return module;
+}
+
+export async function getTeacherModuleProblemOrThrow(
+  userId: string,
+  moduleProblemId: string,
+) {
+  const mp = await prisma.moduleProblem.findUnique({
+    where: { id: moduleProblemId },
+    include: {
+      module: {
+        include: {
+          lab: {
+            include: {
+              teachers: {
+                where: { userId },
+                select: { id: true },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+  if (!mp) {
+    const err = new Error("ModuleProblem not found");
+    (err as any).status = 404;
+    throw err;
+  }
+  if (mp.module.lab.creatorId !== userId && mp.module.lab.teachers.length === 0) {
+    const err = new Error("Forbidden");
+    (err as any).status = 403;
+    throw err;
+  }
+  return mp;
+}
+
+// ── Write access (creator only) ──
+
+export async function getTeacherLabForWrite(userId: string, labId: string) {
   const lab = await prisma.lab.findUnique({ where: { id: labId } });
   if (!lab) {
     const err = new Error("Lab not found");
@@ -33,7 +125,7 @@ export async function getTeacherLabOrThrow(userId: string, labId: string) {
   return lab;
 }
 
-export async function getTeacherModuleOrThrow(
+export async function getTeacherModuleForWrite(
   userId: string,
   moduleId: string,
 ) {
@@ -54,7 +146,7 @@ export async function getTeacherModuleOrThrow(
   return module;
 }
 
-export async function getTeacherModuleProblemOrThrow(
+export async function getTeacherModuleProblemForWrite(
   userId: string,
   moduleProblemId: string,
 ) {
@@ -77,6 +169,45 @@ export async function getTeacherModuleProblemOrThrow(
     throw err;
   }
   return mp;
+}
+
+// ── Lab teacher management ──
+
+export async function addLabTeacher(
+  labId: string,
+  teacherUserId: string,
+  addedById: string,
+) {
+  const teacher = await prisma.user.findUnique({
+    where: { id: teacherUserId },
+    select: { globalRoleId: true },
+  });
+  if (!teacher || teacher.globalRoleId !== GLOBAL_ROLE_IDS.ORG_TEACHER) {
+    const err = new Error("User is not a teacher");
+    (err as any).status = 400;
+    throw err;
+  }
+
+  return prisma.labTeacher.create({
+    data: { labId, userId: teacherUserId, addedById },
+  });
+}
+
+export async function removeLabTeacher(labId: string, teacherUserId: string) {
+  await prisma.labTeacher.delete({
+    where: { labId_userId: { labId, userId: teacherUserId } },
+  });
+}
+
+export async function getLabTeachers(labId: string) {
+  return prisma.labTeacher.findMany({
+    where: { labId },
+    include: {
+      user: { select: { id: true, name: true, email: true } },
+      addedBy: { select: { id: true, name: true } },
+    },
+    orderBy: { addedAt: "desc" },
+  });
 }
 
 export async function getStudentGroupIds(userId: string): Promise<string[]> {

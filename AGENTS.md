@@ -1,0 +1,1 @@
+- Do not create any prisma migrations file or run any migrations, you are only allowed to run npx prisma generate and update the schema.prisma for any db changes

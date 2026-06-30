@@ -50,4 +50,10 @@ router.get("/modules/:moduleId/problem-analytics", requirePermission(PERMISSIONS
 
 router.get("/modules/:moduleId/export-excel", requirePermission(PERMISSIONS.ANALYTICS_VIEW), labController.exportModuleAnalytics);
 
+// Lab Teacher Management (search must come before /labs/:labId/teachers)
+router.get("/teachers/search", requirePermission(PERMISSIONS.LAB_VIEW), labController.searchTeachers);
+router.post("/labs/:labId/teachers", requirePermission(PERMISSIONS.LAB_EDIT), labController.addLabTeacher);
+router.delete("/labs/:labId/teachers/:teacherUserId", requirePermission(PERMISSIONS.LAB_EDIT), labController.removeLabTeacher);
+router.get("/labs/:labId/teachers", requirePermission(PERMISSIONS.LAB_VIEW), labController.getLabTeachers);
+
 export default router;

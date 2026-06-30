@@ -46,6 +46,8 @@ model User {
   teacherProfile         TeacherProfile?
 
   createdLabs            Lab[]            @relation("CreatedLabs")
+  assignedLabs           LabTeacher[]    @relation("TeacherAssignedLabs")
+  addedLabTeachers       LabTeacher[]    @relation("AddedLabTeacher")
   labProgress            ModuleProblemProgress[]
 
   @@index([email])
@@ -989,9 +991,27 @@ model Lab {
 
   assignments LabAssignment[]
   modules     LabModule[]
+  teachers    LabTeacher[]
   aiconversations AIConversation[]
 
   @@index([creatorId])
+}
+
+model LabTeacher {
+  id        String   @id @default(uuid())
+  labId     String
+  userId    String
+  addedAt   DateTime @default(now())
+  addedById String
+
+  lab       Lab      @relation(fields: [labId], references: [id], onDelete: Cascade)
+  user      User     @relation("TeacherAssignedLabs", fields: [userId], references: [id], onDelete: Cascade)
+  addedBy   User     @relation("AddedLabTeacher", fields: [addedById], references: [id])
+
+  @@unique([labId, userId])
+  @@index([labId])
+  @@index([userId])
+  @@index([addedById])
 }
 
 model LabAssignment {

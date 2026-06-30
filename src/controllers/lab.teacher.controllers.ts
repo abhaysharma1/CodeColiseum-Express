@@ -1,5 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import prisma from "@/utils/prisma";
+import { GLOBAL_ROLE_IDS } from "@/permissions/role.constants";
 import {
   createLabSchema,
   updateLabSchema,
@@ -13,14 +14,20 @@ import {
 } from "@/validations/lab.schema";
 import {
   getTeacherLabOrThrow,
+  getTeacherLabForWrite,
   getTeacherModuleOrThrow,
+  getTeacherModuleForWrite,
   getTeacherModuleProblemOrThrow,
+  getTeacherModuleProblemForWrite,
   getAssessmentOrThrow,
   toAssessmentDTO,
   getLabAssignments as getLabAssignmentsService,
   getModuleProblemAnalytics as getModuleProblemAnalyticsService,
   getModuleStudentProgress as getModuleStudentProgressService,
   getAssessmentResults as getAssessmentResultsService,
+  addLabTeacher as addLabTeacherService,
+  removeLabTeacher as removeLabTeacherService,
+  getLabTeachers as getLabTeachersService,
 } from "@/services/lab.service";
 import { exportModuleAnalytics as exportModuleAnalyticsFn } from "@/controllers/module-export.controller";
 
@@ -64,7 +71,12 @@ export const getLabs = async (
 
     const [labs, total] = await Promise.all([
       prisma.lab.findMany({
-        where: { creatorId: user.id },
+        where: {
+          OR: [
+            { creatorId: user.id },
+            { teachers: { some: { userId: user.id } } },
+          ],
+        },
         include: {
           _count: { select: { modules: true, assignments: true } },
         },
@@ -72,7 +84,14 @@ export const getLabs = async (
         take,
         skip,
       }),
-      prisma.lab.count({ where: { creatorId: user.id } }),
+      prisma.lab.count({
+        where: {
+          OR: [
+            { creatorId: user.id },
+            { teachers: { some: { userId: user.id } } },
+          ],
+        },
+      }),
     ]);
 
     res.status(200).json({
@@ -132,7 +151,7 @@ export const updateLab = async (
   try {
     const user = req.user!;
     const labId = req.params.labId as string;
-    await getTeacherLabOrThrow(user.id, labId);
+    await getTeacherLabForWrite(user.id, labId);
 
     const parsed = updateLabSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -166,7 +185,7 @@ export const deleteLab = async (
   try {
     const user = req.user!;
     const labId = req.params.labId as string;
-    await getTeacherLabOrThrow(user.id, labId);
+    await getTeacherLabForWrite(user.id, labId);
 
     await prisma.lab.delete({ where: { id: labId } });
 
@@ -200,7 +219,7 @@ export const assignLab = async (
   try {
     const user = req.user!;
     const labId = req.params.labId as string;
-    await getTeacherLabOrThrow(user.id, labId);
+    await getTeacherLabForWrite(user.id, labId);
 
     const parsed = assignLabSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -242,7 +261,7 @@ export const createModule = async (
   try {
     const user = req.user!;
     const labId = req.params.labId as string;
-    await getTeacherLabOrThrow(user.id, labId);
+    await getTeacherLabForWrite(user.id, labId);
 
     const parsed = createModuleSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -331,6 +350,7 @@ export const getModule = async (
       title: module.title,
       description: module.description,
       labId: module.labId,
+      labCreatorId: (module as any).lab.creatorId,
       weekNumber: module.weekNumber,
       orderIndex: module.orderIndex,
       unlockAt: module.unlockAt,
@@ -353,7 +373,7 @@ export const updateModule = async (
   try {
     const user = req.user!;
     const moduleId = req.params.moduleId as string;
-    const module = await getTeacherModuleOrThrow(user.id, moduleId);
+    const module = await getTeacherModuleForWrite(user.id, moduleId);
 
     const parsed = updateModuleSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -396,7 +416,7 @@ export const deleteModule = async (
   try {
     const user = req.user!;
     const moduleId = req.params.moduleId as string;
-    await getTeacherModuleOrThrow(user.id, moduleId);
+    await getTeacherModuleForWrite(user.id, moduleId);
 
     await prisma.labModule.delete({ where: { id: moduleId } });
 
@@ -414,7 +434,7 @@ export const addModuleProblems = async (
   try {
     const user = req.user!;
     const moduleId = req.params.moduleId as string;
-    await getTeacherModuleOrThrow(user.id, moduleId);
+    await getTeacherModuleForWrite(user.id, moduleId);
 
     const parsed = addModuleProblemsSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -493,7 +513,7 @@ export const updateModuleProblemAccess = async (
   try {
     const user = req.user!;
     const moduleProblemId = req.params.moduleProblemId as string;
-    await getTeacherModuleProblemOrThrow(user.id, moduleProblemId);
+    await getTeacherModuleProblemForWrite(user.id, moduleProblemId);
 
     const parsed = updateModuleProblemAccessSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -551,7 +571,7 @@ export const removeModuleProblem = async (
   try {
     const user = req.user!;
     const moduleProblemId = req.params.moduleProblemId as string;
-    await getTeacherModuleProblemOrThrow(user.id, moduleProblemId);
+    await getTeacherModuleProblemForWrite(user.id, moduleProblemId);
 
     await prisma.moduleProblem.delete({
       where: { id: moduleProblemId },
@@ -571,7 +591,7 @@ export const assignAssessment = async (
   try {
     const user = req.user!;
     const moduleId = req.params.moduleId as string;
-    await getTeacherModuleOrThrow(user.id, moduleId);
+    await getTeacherModuleForWrite(user.id, moduleId);
 
     const parsed = assignAssessmentSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -611,7 +631,7 @@ export const updateAssessment = async (
   try {
     const user = req.user!;
     const moduleId = req.params.moduleId as string;
-    const module = await getTeacherModuleOrThrow(user.id, moduleId);
+    const module = await getTeacherModuleForWrite(user.id, moduleId);
     if (!module.assessmentExamId) {
       return res.status(400).json({ success: false, message: "No assessment to update. Use assign first." });
     }
@@ -654,7 +674,7 @@ export const removeAssessment = async (
   try {
     const user = req.user!;
     const moduleId = req.params.moduleId as string;
-    await getTeacherModuleOrThrow(user.id, moduleId);
+    await getTeacherModuleForWrite(user.id, moduleId);
 
     await prisma.labModule.update({
       where: { id: moduleId },
@@ -675,7 +695,7 @@ export const createAssessment = async (
   try {
     const user = req.user!;
     const moduleId = req.params.moduleId as string;
-    const module = await getTeacherModuleOrThrow(user.id, moduleId);
+    const module = await getTeacherModuleForWrite(user.id, moduleId);
 
     const parsed = createAssessmentSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -796,10 +816,17 @@ export const getLabsStats = async (
   try {
     const user = req.user!;
 
+    const labWhere = {
+      OR: [
+        { creatorId: user.id },
+        { teachers: { some: { userId: user.id } } },
+      ],
+    } as any;
+
     const [totalLabs, labsWithModules, totalGroups, totalStudents] = await Promise.all([
-      prisma.lab.count({ where: { creatorId: user.id } }),
+      prisma.lab.count({ where: labWhere }),
       prisma.lab.findMany({
-        where: { creatorId: user.id },
+        where: labWhere,
         select: { _count: { select: { modules: true } } },
       }),
       prisma.group.count({ where: { creatorId: user.id } }),
@@ -839,3 +866,107 @@ export const getModuleProblemAnalytics = async (
 };
 
 export const exportModuleAnalytics = exportModuleAnalyticsFn;
+
+// ── Lab teacher management ──
+
+export const searchTeachers = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { q } = req.query as { q?: string };
+    if (!q || q.length < 2) {
+      return res.status(200).json([]);
+    }
+    const teachers = await prisma.user.findMany({
+      where: {
+        globalRoleId: GLOBAL_ROLE_IDS.ORG_TEACHER,
+        OR: [
+          { name: { contains: q, mode: "insensitive" } },
+          { email: { contains: q, mode: "insensitive" } },
+        ],
+      },
+      select: { id: true, name: true, email: true },
+      take: 20,
+    });
+    res.status(200).json(teachers);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const addLabTeacher = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const user = req.user!;
+    const labId = req.params.labId as string;
+    await getTeacherLabForWrite(user.id, labId);
+
+    const { email, userId: targetUserId } = req.body as { email?: string; userId?: string };
+    if (!email && !targetUserId) {
+      return res.status(400).json({ success: false, message: "email or userId is required" });
+    }
+
+    const teacher = await prisma.user.findUnique({
+      where: targetUserId ? { id: targetUserId } : { email: email! },
+      select: { id: true, name: true, email: true, globalRoleId: true },
+    });
+    if (!teacher) {
+      return res.status(404).json({ success: false, message: "Teacher not found" });
+    }
+    if (teacher.globalRoleId !== GLOBAL_ROLE_IDS.ORG_TEACHER) {
+      return res.status(400).json({ success: false, message: "User is not a teacher" });
+    }
+
+    const result = await addLabTeacherService(labId, teacher.id, user.id);
+    res.status(201).json({
+      success: true,
+      teacher: { id: teacher.id, name: teacher.name, email: teacher.email },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const removeLabTeacher = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const user = req.user!;
+    const labId = req.params.labId as string;
+    const teacherUserId = req.params.teacherUserId as string;
+    await getTeacherLabForWrite(user.id, labId);
+
+    if (teacherUserId === user.id) {
+      return res.status(400).json({ success: false, message: "Cannot remove yourself" });
+    }
+
+    await removeLabTeacherService(labId, teacherUserId);
+    res.status(200).json({ success: true, message: "Teacher removed from lab" });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getLabTeachers = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const user = req.user!;
+    const labId = req.params.labId as string;
+    await getTeacherLabOrThrow(user.id, labId);
+
+    const teachers = await getLabTeachersService(labId);
+    res.status(200).json(teachers);
+  } catch (error) {
+    next(error);
+  }
+};
