@@ -758,9 +758,10 @@ export const getAssessmentResults = async (
   try {
     const user = req.user!;
     const moduleId = req.params.moduleId as string;
+    const groupId = req.query.groupId as string | undefined;
     await getTeacherModuleOrThrow(user.id, moduleId);
 
-    const results = await getAssessmentResultsService(moduleId);
+    const results = await getAssessmentResultsService(moduleId, groupId);
 
     res.status(200).json(results);
   } catch (error) {
@@ -776,9 +777,10 @@ export const getModuleStudentProgress = async (
   try {
     const user = req.user!;
     const moduleId = req.params.moduleId as string;
+    const groupId = req.query.groupId as string | undefined;
     await getTeacherModuleOrThrow(user.id, moduleId);
 
-    const progress = await getModuleStudentProgressService(moduleId);
+    const progress = await getModuleStudentProgressService(moduleId, groupId);
 
     res.status(200).json(progress);
   } catch (error) {
@@ -825,9 +827,10 @@ export const getModuleProblemAnalytics = async (
   try {
     const user = req.user!;
     const moduleId = req.params.moduleId as string;
+    const groupId = req.query.groupId as string | undefined;
     await getTeacherModuleOrThrow(user.id, moduleId);
 
-    const analytics = await getModuleProblemAnalyticsService(moduleId);
+    const analytics = await getModuleProblemAnalyticsService(moduleId, groupId);
 
     res.status(200).json(analytics);
   } catch (error) {

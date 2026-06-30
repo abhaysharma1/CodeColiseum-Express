@@ -226,7 +226,17 @@ export async function getModuleProblemProgress(
 
 export async function getModuleProblemAnalytics(
   moduleId: string,
+  groupId?: string,
 ): Promise<ProblemAnalyticsEntry[]> {
+  let userIds: string[] | undefined;
+  if (groupId) {
+    const members = await prisma.groupMember.findMany({
+      where: { groupId },
+      select: { userId: true },
+    });
+    userIds = members.map((m: { userId: string }) => m.userId);
+  }
+
   const moduleProblems = await prisma.moduleProblem.findMany({
     where: { moduleId },
     include: {
@@ -243,11 +253,14 @@ export async function getModuleProblemAnalytics(
   });
 
   return moduleProblems.map((mp: any) => {
-    const uniqueStudents = new Set(mp.progress.map((p: any) => p.userId));
+    const filteredProgress = userIds
+      ? mp.progress.filter((p: any) => userIds!.includes(p.userId))
+      : mp.progress;
+    const uniqueStudents = new Set(filteredProgress.map((p: any) => p.userId));
     const solvedStudents = new Set(
-      mp.progress.filter((p: any) => p.isSolved).map((p: any) => p.userId),
+      filteredProgress.filter((p: any) => p.isSolved).map((p: any) => p.userId),
     );
-    const totalAttempts = mp.progress.reduce(
+    const totalAttempts = filteredProgress.reduce(
       (sum: number, p: any) => sum + p.attemptCount,
       0,
     );
@@ -273,17 +286,28 @@ export async function getModuleProblemAnalytics(
 
 export async function getModuleStudentProgress(
   moduleId: string,
+  groupId?: string,
 ): Promise<StudentProgressEntry[]> {
   const totalProblems = await prisma.moduleProblem.count({
     where: { moduleId },
   });
   if (totalProblems === 0) return [];
 
+  let userIds: string[] | undefined;
+  if (groupId) {
+    const members = await prisma.groupMember.findMany({
+      where: { groupId },
+      select: { userId: true },
+    });
+    userIds = members.map((m: { userId: string }) => m.userId);
+  }
+
   const progress = await prisma.moduleProblemProgress.findMany({
     where: {
       moduleProblem: {
         moduleId,
       },
+      ...(userIds ? { userId: { in: userIds } } : {}),
     },
     select: {
       userId: true,
@@ -318,6 +342,7 @@ export async function getModuleStudentProgress(
 
 export async function getAssessmentResults(
   moduleId: string,
+  groupId?: string,
 ): Promise<AssessmentResultsDTO> {
   const module = await prisma.labModule.findUnique({
     where: { id: moduleId },
@@ -329,8 +354,20 @@ export async function getAssessmentResults(
     throw err;
   }
 
+  let userIds: string[] | undefined;
+  if (groupId) {
+    const members = await prisma.groupMember.findMany({
+      where: { groupId },
+      select: { userId: true },
+    });
+    userIds = members.map((m: { userId: string }) => m.userId);
+  }
+
   const attempts = await prisma.examAttempt.findMany({
-    where: { examId: module.assessmentExamId },
+    where: {
+      examId: module.assessmentExamId,
+      ...(userIds ? { studentId: { in: userIds } } : {}),
+    },
     select: {
       studentId: true,
       totalScore: true,

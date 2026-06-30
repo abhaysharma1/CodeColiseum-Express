@@ -10,9 +10,10 @@ export async function exportModuleAnalytics(
   try {
     const user = req.user!;
     const moduleId = req.params.moduleId as string;
+    const groupId = req.query.groupId as string | undefined;
     await getTeacherModuleOrThrow(user.id, moduleId);
 
-    const buffer = await generateModuleExportExcel(moduleId);
+    const buffer = await generateModuleExportExcel(moduleId, groupId);
 
     res.setHeader(
       "Content-Type",

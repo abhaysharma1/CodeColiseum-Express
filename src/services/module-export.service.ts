@@ -51,7 +51,7 @@ function computeRank(students: { percentage: number }[]): number[] {
   return students.map((s) => rankByPercentage.get(s.percentage) ?? 0);
 }
 
-export async function generateModuleExportExcel(moduleId: string): Promise<Buffer> {
+export async function generateModuleExportExcel(moduleId: string, groupId?: string): Promise<Buffer> {
   const module = await prisma.labModule.findUnique({
     where: { id: moduleId },
     include: {
@@ -82,7 +82,9 @@ export async function generateModuleExportExcel(moduleId: string): Promise<Buffe
   }
 
   const problems = module.problems;
-  const groupIds = module.lab.assignments.map((a) => a.group.id);
+  const groupIds = groupId
+    ? [groupId]
+    : module.lab.assignments.map((a) => a.group.id);
 
   const [members, allProgress] = await Promise.all([
     prisma.groupMember.findMany({
