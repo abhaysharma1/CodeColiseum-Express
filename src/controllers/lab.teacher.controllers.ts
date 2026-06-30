@@ -443,11 +443,27 @@ export const addModuleProblems = async (
 
     const existingProblems = await prisma.problem.findMany({
       where: { id: { in: parsed.data.problemIds } },
-      select: { id: true },
+      select: { id: true, ownerId: true, visibility: true, approvalStatus: true },
     });
 
     if (existingProblems.length !== parsed.data.problemIds.length) {
       return res.status(400).json({ success: false, message: "One or more problems not found" });
+    }
+
+    const invalidIds = parsed.data.problemIds.filter((pid: string) => {
+      const p = existingProblems.find((e: any) => e.id === pid);
+      if (!p) return true;
+      return !(
+        (p.visibility === "PUBLIC" && p.approvalStatus === "APPROVED") ||
+        p.ownerId === user.id
+      );
+    });
+
+    if (invalidIds.length > 0) {
+      return res.status(403).json({
+        success: false,
+        message: `Access denied to problems: ${invalidIds.join(", ")}`,
+      });
     }
 
     const result = await prisma.moduleProblem.createMany({

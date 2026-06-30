@@ -691,6 +691,10 @@ export const uploadProblems = async (req: Request, res: Response) => {
               difficulty: p.difficulty,
               source: p.source ?? "Unknown",
               hidden: p.hidden,
+              ownerType: "ADMIN",
+              visibility: "PUBLIC",
+              approvalStatus: "APPROVED",
+              approvedAt: new Date(),
             },
           });
 
@@ -1419,18 +1423,12 @@ export const upsertProblem = async (req: Request, res: Response, next: NextFunct
     const publicCasesJson = val.testCases.public.map((t, idx) => ({ id: t.id || `pub-${idx}`, input: t.input, output: t.output }));
     const hiddenCasesJson = val.testCases.hidden.map((t, idx) => ({ id: t.id || `hid-${idx}`, input: t.input, output: t.output }));
 
-    const problemData = {
-      title: val.title,
-      description: fullDescription,
-      difficulty: val.difficulty as any,
-      isPublished,
-      hidden: val.hidden,
-      runTestCase: {
-        create: { cases: publicCasesJson },
-      },
-      testCase: {
-        create: { cases: hiddenCasesJson },
-      },
+    const baseVisibility = {
+      ownerType: "ADMIN" as const,
+      visibility: "PUBLIC" as const,
+      approvalStatus: "APPROVED" as const,
+      approvedAt: new Date(),
+      approvedById: req.user!.id,
     };
 
     let problem;
@@ -1452,6 +1450,7 @@ export const upsertProblem = async (req: Request, res: Response, next: NextFunct
           problem = await tx.problem.update({
             where: { id },
             data: {
+              ...baseVisibility,
               title: val.title,
               description: fullDescription,
               difficulty: val.difficulty as any,
@@ -1488,6 +1487,7 @@ export const upsertProblem = async (req: Request, res: Response, next: NextFunct
 
        problem = await prisma.problem.create({
          data: {
+           ...baseVisibility,
            title: val.title,
            description: fullDescription,
            difficulty: val.difficulty as any,

@@ -830,6 +830,33 @@ export const getAllExamProblem = async (req: Request, res: Response) => {
   return res.status(200).json({ problems });
 };
 
+async function validateProblemAccessForTeacher(
+  userId: string,
+  problemIds: string[],
+): Promise<void> {
+  if (!problemIds || problemIds.length === 0) return;
+
+  const problems = await prisma.problem.findMany({
+    where: { id: { in: problemIds } },
+    select: { id: true, ownerId: true, visibility: true, approvalStatus: true },
+  });
+
+  const invalidIds = problemIds.filter((pid) => {
+    const problem = problems.find((p: any) => p.id === pid);
+    if (!problem) return true;
+    const canAccess =
+      (problem.visibility === "PUBLIC" && problem.approvalStatus === "APPROVED") ||
+      problem.ownerId === userId;
+    return !canAccess;
+  });
+
+  if (invalidIds.length > 0) {
+    throw new Error(
+      `Access denied to problems: ${invalidIds.join(", ")}`,
+    );
+  }
+}
+
 export const saveDraft = async (
   req: Request,
   res: Response,
@@ -862,6 +889,9 @@ export const saveDraft = async (
     if (exam.isPublished) {
       return res.status(400).json({ error: "Published Exam cannot be edited" });
     }
+
+    // Validate problem access
+    await validateProblemAccessForTeacher(user.id, selectedProblemsId);
 
     // Perform the transaction
     await prisma.$transaction(async (tx) => {
@@ -941,6 +971,9 @@ export const publishExam = async (
     if (exam.isPublished) {
       return res.status(400).json({ error: "Published Exam cannot be edited" });
     }
+
+    // Validate problem access
+    await validateProblemAccessForTeacher(user.id, selectedProblemsId);
 
     // Perform the transaction
     await prisma.$transaction(async (tx) => {

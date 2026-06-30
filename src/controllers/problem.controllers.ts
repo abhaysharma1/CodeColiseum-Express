@@ -180,19 +180,21 @@ export const getProblems = async (
   next: NextFunction,
 ) => {
   try {
-    // Optional auth: show hidden problems to teachers/admins
-    let isTeacherOrAdmin = false;
+    // Determine user role for problem visibility filtering
+    let role: string | undefined;
+    let userId: string | undefined;
     try {
       const session = await auth.api.getSession({
         headers: fromNodeHeaders(req.headers),
       });
-      const role = session?.user?.globalRoleId;
-      isTeacherOrAdmin =
-        role === GLOBAL_ROLE_IDS.ORG_TEACHER ||
-        role === GLOBAL_ROLE_IDS.PLATFORM_ADMIN;
+      role = session?.user?.globalRoleId ?? undefined;
+      userId = session?.user?.id ?? undefined;
     } catch {
       // No session — treat as public user
     }
+
+    const isAdmin = role === GLOBAL_ROLE_IDS.PLATFORM_ADMIN;
+    const isTeacher = role === GLOBAL_ROLE_IDS.ORG_TEACHER;
 
     const { searchValue, tags, difficulty, take, skip, withDescription } =
       req.query;
@@ -206,25 +208,43 @@ export const getProblems = async (
       number: {
         not: 0,
       },
+      AND: [] as any[],
     };
 
-    // Hide hidden problems from non-teacher/non-admin users
-    if (!isTeacherOrAdmin) {
-      where.hidden = false;
+    const accessConditions: any[] = [];
+
+    // Students and unauthenticated: only PUBLIC APPROVED problems
+    // Teachers: PUBLIC APPROVED + their own problems
+    // Admins: all problems (no filter)
+    if (isAdmin) {
+      // Admins see everything — nothing added
+    } else if (isTeacher) {
+      accessConditions.push({
+        OR: [
+          { visibility: "PUBLIC", approvalStatus: "APPROVED" },
+          { ownerId: userId },
+        ],
+      });
+      accessConditions.push({ hidden: false });
+    } else {
+      accessConditions.push({ visibility: "PUBLIC" });
+      accessConditions.push({ approvalStatus: "APPROVED" });
+      accessConditions.push({ hidden: false });
     }
 
-    // Add search conditions
+    // Build search OR conditions
+    let searchOrConditions: any[] | undefined;
     if (searchValue && String(searchValue).trim() !== "") {
       const search = String(searchValue).trim();
       const parsedNumber = Number(search);
 
-      const orConditions: any[] = [
+      const conditions: any[] = [
         { title: { contains: search, mode: "insensitive" } },
         { id: search },
       ];
 
       if (includeDescription) {
-        orConditions.push({
+        conditions.push({
           description: {
             contains: search,
             mode: "insensitive",
@@ -232,14 +252,20 @@ export const getProblems = async (
         });
       }
 
-      // Search by problem number if searchValue is a valid number
       if (!Number.isNaN(parsedNumber)) {
-        orConditions.push({
-          number: parsedNumber,
-        });
+        conditions.push({ number: parsedNumber });
       }
 
-      where.OR = orConditions;
+      searchOrConditions = conditions;
+    }
+
+    // Combine access + search into AND
+    where.AND.push(...accessConditions);
+    if (searchOrConditions) {
+      where.AND.push({ OR: searchOrConditions });
+    }
+    if (where.AND.length === 0) {
+      delete where.AND;
     }
 
     // Add tag filter

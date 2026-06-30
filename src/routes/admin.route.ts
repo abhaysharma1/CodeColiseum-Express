@@ -29,6 +29,13 @@ import {
   toggleProblemPublish,
 } from "@/controllers/admin.controllers";
 import {
+  getPendingProblems,
+  getRejectedProblems,
+  getApprovedTeacherProblems,
+  approveProblem,
+  rejectProblem,
+} from "@/controllers/adminModeration.controllers";
+import {
   getOrgAnalyticsOverview,
   getOrgAnalyticsGroups,
   getOrgAnalyticsStudents,
@@ -60,12 +67,21 @@ router.delete("/performance-test-cases/:id", deletePerformanceTestCase);
 // Upload Problems Route
 router.post("/upload-problems", uploadProblems);
 
+// Moderation Routes (must be before /problems/:id to avoid param matching)
+router.get("/problems/pending", getPendingProblems);
+router.get("/problems/rejected", getRejectedProblems);
+router.get("/problems/approved", getApprovedTeacherProblems);
+
 // Problem Editor Routes
 router.get("/problems", getProblemsForAdmin);
 router.get("/problems/:id", getProblemForEditor);
 router.post("/problems/run-reference-solution", runReferenceSolution);
 router.post("/problems", upsertProblem);
 router.put("/problems/:id", upsertProblem);
+
+// Moderation Action Routes (after /problems/:id is defined)
+router.post("/problems/:id/approve", approveProblem);
+router.post("/problems/:id/reject", rejectProblem);
 
 // Runtime Analyzer Route
 router.post("/problems/:problemId/runtime-analyzer", runtimeAnalyzer);

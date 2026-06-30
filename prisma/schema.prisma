@@ -50,6 +50,9 @@ model User {
   addedLabTeachers       LabTeacher[]    @relation("AddedLabTeacher")
   labProgress            ModuleProblemProgress[]
 
+  ownedProblems          Problem[]        @relation("OwnedProblems")
+  approvedProblems       Problem[]        @relation("ApprovedProblems")
+
   @@index([email])
   @@index([globalRoleId])
   @@map("user")
@@ -152,6 +155,19 @@ model Problem {
   isPublished Boolean           @default(false)
   hidden      Boolean           @default(false)
 
+  ownerType        ProblemOwnerType      @default(ADMIN)
+  ownerId          String?
+  visibility       ProblemVisibility     @default(PUBLIC)
+  approvalStatus   ProblemApprovalStatus @default(APPROVED)
+  approvedById     String?
+  approvedAt       DateTime?
+  rejectionReason  String?
+  createdAt        DateTime?              @default(now())
+  updatedAt        DateTime?              @updatedAt
+
+  owner            User?  @relation("OwnedProblems", fields: [ownerId], references: [id], onDelete: SetNull)
+  approvedBy       User?  @relation("ApprovedProblems", fields: [approvedById], references: [id], onDelete: SetNull)
+
   examProblems           ExamProblem[]
   tags                   ProblemTag[]
   testCase               TestCase? // one-to-one relation
@@ -170,6 +186,26 @@ model Problem {
   moduleProblems         ModuleProblem[]
 
   @@index([id, number, title])
+  @@index([ownerType])
+  @@index([ownerId])
+  @@index([visibility, approvalStatus])
+  @@index([approvedById])
+}
+
+enum ProblemOwnerType {
+  ADMIN
+  TEACHER
+}
+
+enum ProblemVisibility {
+  PUBLIC
+  PRIVATE
+}
+
+enum ProblemApprovalStatus {
+  APPROVED
+  PENDING
+  REJECTED
 }
 
 enum problemDifficulty {

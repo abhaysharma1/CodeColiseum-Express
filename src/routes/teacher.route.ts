@@ -19,6 +19,15 @@ import {
 	exportAnalyticsCSV,
 	exportAnalyticsPDF,
 } from "@/controllers/teacher.stats.controllers";
+import {
+	createTeacherProblem,
+	getMyProblems,
+	getTeacherProblemForEditor,
+	updateTeacherProblem,
+	deleteTeacherProblem,
+	resubmitProblem,
+	runTeacherReferenceSolution,
+} from "@/controllers/teacherProblem.controllers";
 import { requirePermission } from "@/middleware/permission.middleware";
 import { PERMISSIONS } from "@/permissions/permission.constants";
 
@@ -33,6 +42,15 @@ const getGroupIdFromBody = (req: { body?: { groupId?: unknown } }): string | und
 router.use(isTeacher);
 
 router.use("/exam", teacherExamRouter);
+
+// Teacher Problem Management
+router.post("/problems", createTeacherProblem);
+router.get("/problems", getMyProblems);
+router.post("/problems/run-reference-solution", runTeacherReferenceSolution);
+router.get("/problems/:id", getTeacherProblemForEditor);
+router.patch("/problems/:id", updateTeacherProblem);
+router.delete("/problems/:id", deleteTeacherProblem);
+router.post("/problems/:id/resubmit", resubmitProblem);
 
 router.post("/creategroup", requirePermission(PERMISSIONS.GROUP_EDIT), createGroup);
 
