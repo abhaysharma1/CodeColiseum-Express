@@ -48,10 +48,12 @@ RUN npm install prisma
 
 # Install code formatter dependencies
 RUN apk add --no-cache clang-extra-tools python3 py3-pip openjdk21-jre-headless curl && \
-    python3 -m pip install --no-cache-dir black && \
+    python3 -m venv /opt/venv && \
+    /opt/venv/bin/pip install --no-cache-dir black && \
     curl -L -o /opt/google-java-format.jar "https://github.com/google/google-java-format/releases/download/v1.35.0/google-java-format-1.35.0-all-deps.jar" && \
     apk del curl && \
     rm -rf /var/cache/apk/* /root/.cache
+ENV PATH="/opt/venv/bin:$PATH"
 
 ENV GOOGLE_JAVA_FORMAT_JAR=/opt/google-java-format.jar
 
