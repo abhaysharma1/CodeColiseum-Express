@@ -47,9 +47,9 @@ COPY --from=builder --chown=nodeuser:nodejs /app/assets ./assets
 RUN npm install prisma
 
 # Install code formatter dependencies
-RUN apk add --no-cache clang-extra-tools python3 py3-pip openjdk17-jre curl && \
-    pip install --no-cache-dir black && \
-    curl -L -o /opt/google-java-format.jar "https://github.com/google/google-java-format/releases/download/v1.19.2/google-java-format-1.19.2-all-deps.jar" && \
+RUN apk add --no-cache clang-extra-tools python3 py3-pip openjdk21-jre-headless curl && \
+    python3 -m pip install --no-cache-dir black && \
+    curl -L -o /opt/google-java-format.jar "https://github.com/google/google-java-format/releases/download/v1.35.0/google-java-format-1.35.0-all-deps.jar" && \
     apk del curl && \
     rm -rf /var/cache/apk/* /root/.cache
 
