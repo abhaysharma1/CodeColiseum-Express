@@ -13,6 +13,7 @@ import internalRouter from "@/routes/internal.routes";
 import permissionsRouter from "@/routes/permissions.route";
 import publicAuthRouter from "@/routes/public.auth.route";
 import notificationsRouter from "@/routes/notifications.route";
+import formatterRoutes from "@/routes/formatter.routes";
 import labTeacherRouter from "@/routes/lab.teacher.route";
 import labStudentRouter from "@/routes/lab.student.route";
 import cookieParser from "cookie-parser";
@@ -100,6 +101,9 @@ app.get("/api/seb/config", (req, res) => {
 
 // Notifications API
 app.use("/api/notifications", notificationsRouter);
+
+// Code Formatting API
+app.use("/api/tools", formatterRoutes);
 
 app.use((req: Request, res: Response) => {
   res.status(404).json({ message: "Resource not found" });
