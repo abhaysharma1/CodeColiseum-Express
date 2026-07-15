@@ -2,6 +2,14 @@ import prisma from "@/utils/prisma";
 import { sendAiChatToSQS } from "@/utils/sqs";
 import { NextFunction, Request, Response } from "express";
 
+class ApiError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
 export const isAiEnabledAndGetGroupId = async (
   req: Request,
   res: Response,
@@ -61,7 +69,7 @@ export const chatWithAi = async (
     });
 
     if (!problem) {
-      throw new Error("Couldn't Find Problem");
+      throw new ApiError(404, "Couldn't Find Problem");
     }
 
     const group = await prisma.group.findUnique({
@@ -82,11 +90,11 @@ export const chatWithAi = async (
     });
 
     if (!group) {
-      throw new Error("Cannot Find Group");
+      throw new ApiError(404, "Cannot Find Group");
     }
 
     if (!group.aiEnabled) {
-      throw new Error("Ai is Not Enabled for this Group");
+      throw new ApiError(403, "Ai is Not Enabled for this Group");
     }
 
     const exam = await prisma.exam.findUnique({
@@ -100,7 +108,7 @@ export const chatWithAi = async (
     });
 
     if (!exam) {
-      throw new Error("Cannot Find Exam");
+      throw new ApiError(404, "Cannot Find Exam");
     }
 
     if (exam.endDate < now) {
@@ -115,7 +123,7 @@ export const chatWithAi = async (
           status: "AUTO_SUBMITTED",
         },
       });
-      throw new Error("Exam has Ended");
+      throw new ApiError(403, "Exam has Ended");
     }
 
     let convo = await prisma.aIConversation.findUnique({
@@ -143,13 +151,12 @@ export const chatWithAi = async (
       convo.messageCount >= group.aiMaxMessages! ||
       convo.totalTokens >= group.aiMaxTokens!
     ) {
-      throw new Error("AI Quota Exceeded For this Conversation");
+      throw new ApiError(429, "AI Quota Exceeded For this Conversation");
     }
 
     if (convo.isClosed) {
-      throw new Error("Conversation has been Closed");
+      throw new ApiError(409, "Conversation has been Closed");
     }
-
 
     let aiLimit;
 
@@ -175,7 +182,7 @@ export const chatWithAi = async (
       (now.getTime() - aiLimit.lastRequest.getTime()) / 1000;
 
     if (secondsSinceLastRequest < RATE_LIMIT) {
-      throw new Error("Rate Limit Exceeded");
+      throw new ApiError(429, "Rate Limit Exceeded");
     }
 
     await prisma.aIRateLimit.update({
@@ -206,7 +213,7 @@ export const chatWithAi = async (
     try {
       await sendAiChatToSQS(convo.id);
     } catch (error) {
-      throw new Error("Couldn't enqueue AI chat job");
+      throw new ApiError(500, "Couldn't enqueue AI chat job");
     }
 
     return res.status(201).json({ status: "PROCESSING" });
@@ -235,11 +242,11 @@ export const getAiChatStatus = async (
     });
 
     if (!convo) {
-      throw new Error("No Conversation Exists");
+      throw new ApiError(404, "No Conversation Exists");
     }
 
     if (convo.isClosed) {
-      throw new Error("Conversation has been closed");
+      throw new ApiError(409, "Conversation has been closed");
     }
 
     const messages = await prisma.aIMessage.findMany({
