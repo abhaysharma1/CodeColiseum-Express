@@ -12,7 +12,12 @@ export const PERMISSIONS = {
 	LAB_EDIT: "lab:edit",
 	LAB_CREATE: "lab:create",
 	LAB_DELETE: "lab:delete",
-	LAB_ASSIGN: "lab:assign"
+	LAB_ASSIGN: "lab:assign",
+	LAB_PUBLISH: "lab:publish",
+	LAB_DUPLICATE: "lab:duplicate",
+	LAB_PREVIEW: "lab:preview",
+	LAB_RATE: "lab:rate",
+	MARKETPLACE_VIEW: "marketplace:view"
 } as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -31,5 +36,10 @@ export const PERMISSION_ALIASES: Record<PermissionKey, readonly string[]> = {
 	[PERMISSIONS.LAB_EDIT]: ["LAB_EDIT"],
 	[PERMISSIONS.LAB_CREATE]: ["LAB_CREATE"],
 	[PERMISSIONS.LAB_DELETE]: ["LAB_DELETE"],
-	[PERMISSIONS.LAB_ASSIGN]: ["LAB_ASSIGN"]
+	[PERMISSIONS.LAB_ASSIGN]: ["LAB_ASSIGN"],
+	[PERMISSIONS.LAB_PUBLISH]: ["LAB_PUBLISH"],
+	[PERMISSIONS.LAB_DUPLICATE]: ["LAB_DUPLICATE"],
+	[PERMISSIONS.LAB_PREVIEW]: ["LAB_PREVIEW"],
+	[PERMISSIONS.LAB_RATE]: ["LAB_RATE"],
+	[PERMISSIONS.MARKETPLACE_VIEW]: ["MARKETPLACE_VIEW"]
 };

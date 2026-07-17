@@ -49,6 +49,7 @@ model User {
   assignedLabs           LabTeacher[]    @relation("TeacherAssignedLabs")
   addedLabTeachers       LabTeacher[]    @relation("AddedLabTeacher")
   labProgress            ModuleProblemProgress[]
+  labRatings             LabRating[]
 
   ownedProblems          Problem[]        @relation("OwnedProblems")
   approvedProblems       Problem[]        @relation("ApprovedProblems")
@@ -651,6 +652,7 @@ model Tag {
   id       String       @id @default(uuid())
   name     String       @unique
   problems ProblemTag[]
+  labs     LabTag[]
 }
 
 model ProblemTag {
@@ -1008,6 +1010,11 @@ model GroupExamAnalytics {
   @@index([groupId, updatedAt])
 }
 
+enum LabVisibility {
+  PRIVATE
+  PUBLIC
+}
+
 // ===== Lab Management =====
 
 model Lab {
@@ -1022,6 +1029,21 @@ model Lab {
   aiMaxMessages       Int? // per student per lab per problem
   aiMaxTokens         Int? // per student per lab per problem
 
+  // Marketplace fields
+  visibility          LabVisibility      @default(PRIVATE)
+  originalLabId       String?
+  originalLab         Lab?               @relation("LabDuplications", fields: [originalLabId], references: [id], onDelete: SetNull)
+  duplications        Lab[]              @relation("LabDuplications")
+  publishedAt         DateTime?
+  duplicateCount      Int                @default(0)
+  isArchived          Boolean            @default(false)
+  averageRating       Float              @default(0)
+  ratingCount         Int                @default(0)
+  difficulty          problemDifficulty?
+  subject             String?
+  programmingLanguage String?
+  estimatedDuration   Int? // minutes
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1029,8 +1051,39 @@ model Lab {
   modules     LabModule[]
   teachers    LabTeacher[]
   aiconversations AIConversation[]
+  ratings     LabRating[]
+  tags        LabTag[]
 
   @@index([creatorId])
+  @@index([visibility, isArchived])
+  @@index([originalLabId])
+}
+
+model LabRating {
+  id        String   @id @default(uuid())
+  labId     String
+  userId    String
+  score     Int      // 1-5
+  review    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lab  Lab  @relation(fields: [labId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([labId, userId])
+  @@index([labId])
+  @@index([userId])
+}
+
+model LabTag {
+  labId String
+  tagId String
+
+  lab Lab @relation(fields: [labId], references: [id], onDelete: Cascade)
+  tag Tag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([labId, tagId])
 }
 
 model LabTeacher {

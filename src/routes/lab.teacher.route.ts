@@ -16,6 +16,13 @@ router.get("/labs/:labId", requirePermission(PERMISSIONS.LAB_VIEW), labControlle
 router.patch("/labs/:labId", requirePermission(PERMISSIONS.LAB_EDIT), labController.updateLab);
 router.delete("/labs/:labId", requirePermission(PERMISSIONS.LAB_DELETE), labController.deleteLab);
 
+// Publish/Unpublish
+router.post("/labs/:labId/publish", requirePermission(PERMISSIONS.LAB_PUBLISH), labController.publishLab);
+router.post("/labs/:labId/unpublish", requirePermission(PERMISSIONS.LAB_PUBLISH), labController.unpublishLab);
+
+// Analytics
+router.get("/labs/:labId/analytics", requirePermission(PERMISSIONS.ANALYTICS_VIEW), labController.getLabAnalytics);
+
 // Lab Assignment
 router.post("/labs/:labId/assign", requirePermission(PERMISSIONS.LAB_ASSIGN), labController.assignLab);
 router.get("/labs/:labId/assign", requirePermission(PERMISSIONS.LAB_VIEW), labController.getLabAssignments);

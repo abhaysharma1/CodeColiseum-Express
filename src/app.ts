@@ -16,6 +16,7 @@ import notificationsRouter from "@/routes/notifications.route";
 import formatterRoutes from "@/routes/formatter.routes";
 import labTeacherRouter from "@/routes/lab.teacher.route";
 import labStudentRouter from "@/routes/lab.student.route";
+import marketplaceRouter from "@/routes/marketplace.routes";
 import cookieParser from "cookie-parser";
 import path from "path";
 
@@ -72,6 +73,7 @@ app.use("/api/teacher", teacherRouter);
 app.use("/api/teacher", labTeacherRouter);
 app.use("/api/student", studentRouter);
 app.use("/api/student", labStudentRouter);
+app.use("/api/marketplace", marketplaceRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/problems", problemRouter);
 app.use("/api/internal", internalRouter);

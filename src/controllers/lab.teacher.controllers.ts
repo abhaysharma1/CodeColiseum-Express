@@ -29,6 +29,8 @@ import {
   removeLabTeacher as removeLabTeacherService,
   getLabTeachers as getLabTeachersService,
 } from "@/services/lab.service";
+import * as marketplaceService from "@/services/marketplace.service";
+import { publishLabSchema } from "@/validations/marketplace.schema";
 import { exportModuleAnalytics as exportModuleAnalyticsFn } from "@/controllers/module-export.controller";
 
 export const createLab = async (
@@ -68,15 +70,25 @@ export const getLabs = async (
     const user = req.user!;
     const take = Number(req.query.take) || 10;
     const skip = Number(req.query.skip) || 0;
+    const scope = req.query.scope as string | undefined;
+    const searchValue = req.query.searchvalue as string | undefined;
 
-    const [labs, total] = await Promise.all([
-      prisma.lab.findMany({
-        where: {
+    const where: any = scope === "owned"
+      ? { creatorId: user.id }
+      : {
           OR: [
             { creatorId: user.id },
             { teachers: { some: { userId: user.id } } },
           ],
-        },
+        };
+
+    if (searchValue) {
+      where.title = { contains: searchValue, mode: "insensitive" };
+    }
+
+    const [labs, total] = await Promise.all([
+      prisma.lab.findMany({
+        where,
         include: {
           _count: { select: { modules: true, assignments: true } },
         },
@@ -84,14 +96,7 @@ export const getLabs = async (
         take,
         skip,
       }),
-      prisma.lab.count({
-        where: {
-          OR: [
-            { creatorId: user.id },
-            { teachers: { some: { userId: user.id } } },
-          ],
-        },
-      }),
+      prisma.lab.count({ where }),
     ]);
 
     res.status(200).json({
@@ -107,6 +112,11 @@ export const getLabs = async (
         aiMaxTokens: lab.aiMaxTokens,
         modulesCount: lab._count.modules,
         assignedGroupsCount: lab._count.assignments,
+        visibility: lab.visibility,
+        duplicateCount: lab.duplicateCount,
+        originalLabId: lab.originalLabId,
+        isArchived: lab.isArchived,
+        publishedAt: lab.publishedAt,
       })),
       pagination: {
         take,
@@ -982,6 +992,64 @@ export const getLabTeachers = async (
 
     const teachers = await getLabTeachersService(labId);
     res.status(200).json(teachers);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ── Publish / Unpublish / Analytics ──
+
+export const publishLab = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const user = req.user!;
+    const labId = req.params.labId as string;
+
+    const parsed = publishLabSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        success: false,
+        message: parsed.error.issues[0]?.message ?? "Confirmation required",
+      });
+    }
+
+    const lab = await marketplaceService.publishLab(user.id, labId);
+    res.status(200).json(lab);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const unpublishLab = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const user = req.user!;
+    const labId = req.params.labId as string;
+
+    const lab = await marketplaceService.unpublishLab(user.id, labId);
+    res.status(200).json(lab);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getLabAnalytics = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const user = req.user!;
+    const labId = req.params.labId as string;
+
+    const analytics = await marketplaceService.getLabAnalytics(user.id, labId);
+    res.status(200).json(analytics);
   } catch (error) {
     next(error);
   }

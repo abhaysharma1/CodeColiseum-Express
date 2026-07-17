@@ -1,11 +1,17 @@
 import { z } from "zod";
 
+const difficultyEnum = z.enum(["EASY", "MEDIUM", "HARD"]).optional();
+
 export const createLabSchema = z.object({
   title: z.string().min(1).max(255),
   description: z.string().optional(),
   aiEnabled: z.boolean().optional().default(false),
   aiMaxMessages: z.number().int().min(1).max(50).optional(),
   aiMaxTokens: z.number().int().min(50).max(10000).optional(),
+  difficulty: difficultyEnum,
+  subject: z.string().max(100).optional(),
+  programmingLanguage: z.string().max(50).optional(),
+  estimatedDuration: z.number().int().min(1).optional(),
 });
 
 export const updateLabSchema = z.object({
@@ -14,6 +20,10 @@ export const updateLabSchema = z.object({
   aiEnabled: z.boolean().optional(),
   aiMaxMessages: z.number().int().min(1).max(50).optional(),
   aiMaxTokens: z.number().int().min(50).max(10000).optional(),
+  difficulty: difficultyEnum,
+  subject: z.string().max(100).optional(),
+  programmingLanguage: z.string().max(50).optional(),
+  estimatedDuration: z.number().int().min(1).optional(),
 });
 
 export const assignLabSchema = z.object({

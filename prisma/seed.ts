@@ -212,7 +212,12 @@ async function seedRoles(permissionIdByKey: Map<string, string>) {
     PERMISSIONS.LAB_EDIT,
     PERMISSIONS.LAB_CREATE,
     PERMISSIONS.LAB_DELETE,
-    PERMISSIONS.LAB_ASSIGN
+    PERMISSIONS.LAB_ASSIGN,
+    PERMISSIONS.LAB_PUBLISH,
+    PERMISSIONS.LAB_DUPLICATE,
+    PERMISSIONS.LAB_PREVIEW,
+    PERMISSIONS.LAB_RATE,
+    PERMISSIONS.MARKETPLACE_VIEW
   ]
     .map((key) => permissionIdByKey.get(key))
     .filter((value): value is string => Boolean(value));
