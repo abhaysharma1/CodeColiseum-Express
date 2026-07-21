@@ -912,13 +912,17 @@ export const saveDraft = async (
       // Remove existing group associations
       await tx.examGroup.deleteMany({ where: { examId: exam.id } });
 
-      // Add new group associations
-      await tx.examGroup.createMany({
-        data: selectedGroups.map((group: Group) => ({
-          examId: exam.id,
-          groupId: group.id,
-        })),
-      });
+      // Add new group association (single group)
+      if (selectedGroups) {
+        const groupId = Array.isArray(selectedGroups)
+          ? selectedGroups[0]?.id
+          : selectedGroups.id;
+        if (groupId) {
+          await tx.examGroup.create({
+            data: { examId: exam.id, groupId },
+          });
+        }
+      }
 
       // Remove existing problem associations
       await tx.examProblem.deleteMany({ where: { examId: exam.id } });
@@ -994,13 +998,17 @@ export const publishExam = async (
       // Remove existing group associations
       await tx.examGroup.deleteMany({ where: { examId: exam.id } });
 
-      // Add new group associations
-      await tx.examGroup.createMany({
-        data: selectedGroups.map((group: Group) => ({
-          examId: exam.id,
-          groupId: group.id,
-        })),
-      });
+      // Add new group association (single group)
+      if (selectedGroups) {
+        const groupId = Array.isArray(selectedGroups)
+          ? selectedGroups[0]?.id
+          : selectedGroups.id;
+        if (groupId) {
+          await tx.examGroup.create({
+            data: { examId: exam.id, groupId },
+          });
+        }
+      }
 
       // Remove existing problem associations
       await tx.examProblem.deleteMany({ where: { examId: exam.id } });

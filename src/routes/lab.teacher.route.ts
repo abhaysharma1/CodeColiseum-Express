@@ -25,6 +25,7 @@ router.get("/labs/:labId/analytics", requirePermission(PERMISSIONS.ANALYTICS_VIE
 
 // Lab Assignment
 router.post("/labs/:labId/assign", requirePermission(PERMISSIONS.LAB_ASSIGN), labController.assignLab);
+router.delete("/labs/:labId/assign", requirePermission(PERMISSIONS.LAB_ASSIGN), labController.unassignLab);
 router.get("/labs/:labId/assign", requirePermission(PERMISSIONS.LAB_VIEW), labController.getLabAssignments);
 
 // Module CRUD

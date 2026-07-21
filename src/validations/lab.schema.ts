@@ -27,7 +27,7 @@ export const updateLabSchema = z.object({
 });
 
 export const assignLabSchema = z.object({
-  groupIds: z.array(z.string()).min(1),
+  groupId: z.string(),
 });
 
 export const createModuleSchema = z.object({

@@ -236,28 +236,44 @@ export const assignLab = async (
       return res.status(400).json({ success: false, message: "Validation failed" });
     }
 
-    const existingGroups = await prisma.group.findMany({
-      where: { id: { in: parsed.data.groupIds } },
+    const group = await prisma.group.findUnique({
+      where: { id: parsed.data.groupId },
       select: { id: true, name: true },
     });
 
-    if (existingGroups.length !== parsed.data.groupIds.length) {
-      return res.status(400).json({ success: false, message: "One or more groups not found" });
+    if (!group) {
+      return res.status(400).json({ success: false, message: "Group not found" });
     }
 
-    const result = await prisma.labAssignment.createMany({
-      data: parsed.data.groupIds.map((groupId: string) => ({
-        labId,
-        groupId,
-      })),
-      skipDuplicates: true,
+    await prisma.$transaction(async (tx: any) => {
+      await tx.labAssignment.deleteMany({ where: { labId } });
+      await tx.labAssignment.create({
+        data: { labId, groupId: group.id },
+      });
     });
 
     res.status(200).json({
       labId,
-      assignedGroups: existingGroups.map((g: any) => ({ groupId: g.id, groupName: g.name })),
-      totalAssigned: result.count,
+      assignedGroup: { groupId: group.id, groupName: group.name },
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const unassignLab = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const user = req.user!;
+    const labId = req.params.labId as string;
+    await getTeacherLabForWrite(user.id, labId);
+
+    await prisma.labAssignment.deleteMany({ where: { labId } });
+
+    res.status(200).json({ success: true, message: "Lab unassigned" });
   } catch (error) {
     next(error);
   }
