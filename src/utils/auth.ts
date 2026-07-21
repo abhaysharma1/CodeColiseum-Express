@@ -16,15 +16,9 @@ export const auth = betterAuth({
       secure: !isDev,
       sameSite: isDev ? "lax" : "none",
       path: "/",
-    },
+    },  
   },
-  session: {
-    cookieCache: {
-      enabled: true,
-      maxAge: 20 * 60, // Cache duration in seconds (5 minutes)
-      strategy: "jwt",
-    },
-  },
+
   emailAndPassword: {
     enabled: true,
     requireEmailVerification: false,
