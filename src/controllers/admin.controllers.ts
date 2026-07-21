@@ -1708,6 +1708,48 @@ function generateRandomPassword(length = 12): string {
   return result;
 }
 
+async function resetUserPassword(
+  userId: string,
+  newPassword: string,
+): Promise<void> {
+  const hashedPassword = await hashPassword(newPassword);
+  const credentialAccount = await prisma.account.findFirst({
+    where: { userId, providerId: "credential" },
+  });
+  if (credentialAccount) {
+    await prisma.account.update({
+      where: { id: credentialAccount.id },
+      data: { password: hashedPassword },
+    });
+  } else {
+    await prisma.account.create({
+      data: {
+        userId,
+        providerId: "credential",
+        accountId: userId,
+        password: hashedPassword,
+      },
+    });
+  }
+}
+
+async function handleGroupMembership(
+  groupId: string,
+  userId: string,
+): Promise<void> {
+  const groupExists = await prisma.group.findUnique({
+    where: { id: groupId },
+  });
+  if (!groupExists) return;
+  const existingMember = await prisma.groupMember.findUnique({
+    where: { groupId_userId: { groupId, userId } },
+  });
+  if (existingMember) return;
+  await prisma.groupMember.create({
+    data: { groupId, userId, roleId: GROUP_ROLE_IDS.MEMBER },
+  });
+}
+
 export const getColleges = async (
   _req: Request,
   res: Response,
@@ -1805,6 +1847,48 @@ export const bulkStudentSignUp = async (
         continue;
       }
 
+      const existingUser = await prisma.user.findUnique({
+        where: { email },
+      });
+
+      if (existingUser) {
+        const password = generateRandomPassword();
+        await resetUserPassword(existingUser.id, password);
+
+        await prisma.user.update({
+          where: { id: existingUser.id },
+          data: {
+            emailVerified: true,
+            isOnboarded: true,
+            globalRoleId: GLOBAL_ROLE_IDS.ORG_STUDENT,
+          },
+        });
+
+        await prisma.studentProfile.upsert({
+          where: { userId: existingUser.id },
+          create: {
+            userId: existingUser.id,
+            rollNumber,
+            collegeId: college.id,
+            branch,
+            semester,
+          },
+          update: {
+            rollNumber,
+            collegeId: college.id,
+            branch,
+            semester,
+          },
+        });
+
+        if (groupId) {
+          await handleGroupMembership(groupId, existingUser.id);
+        }
+
+        results.push({ email, name, password, result: "created" });
+        continue;
+      }
+
       const password = generateRandomPassword();
 
       try {
@@ -1833,23 +1917,7 @@ export const bulkStudentSignUp = async (
         });
 
         if (groupId) {
-          const groupExists = await prisma.group.findUnique({
-            where: { id: groupId },
-          });
-          if (groupExists) {
-            const existingMember = await prisma.groupMember.findUnique({
-              where: { groupId_userId: { groupId, userId: user.id } },
-            });
-            if (!existingMember) {
-              await prisma.groupMember.create({
-                data: {
-                  groupId,
-                  userId: user.id,
-                  roleId: GROUP_ROLE_IDS.MEMBER,
-                },
-              });
-            }
-          }
+          await handleGroupMembership(groupId, user.id);
         }
 
         results.push({ email, name, password, result: "created" });
@@ -1941,6 +2009,46 @@ export const bulkTeacherSignUp = async (
         continue;
       }
 
+      const existingUser = await prisma.user.findUnique({
+        where: { email },
+      });
+
+      if (existingUser) {
+        const password = generateRandomPassword();
+        await resetUserPassword(existingUser.id, password);
+
+        await prisma.user.update({
+          where: { id: existingUser.id },
+          data: {
+            emailVerified: true,
+            isOnboarded: true,
+            globalRoleId: GLOBAL_ROLE_IDS.ORG_TEACHER,
+          },
+        });
+
+        await prisma.teacherProfile.upsert({
+          where: { userId: existingUser.id },
+          create: {
+            userId: existingUser.id,
+            employeeId,
+            department,
+            collegeId: college.id,
+          },
+          update: {
+            employeeId,
+            department,
+            collegeId: college.id,
+          },
+        });
+
+        if (groupId) {
+          await handleGroupMembership(groupId, existingUser.id);
+        }
+
+        results.push({ email, name, password, result: "created" });
+        continue;
+      }
+
       const password = generateRandomPassword();
 
       try {
@@ -1968,23 +2076,7 @@ export const bulkTeacherSignUp = async (
         });
 
         if (groupId) {
-          const groupExists = await prisma.group.findUnique({
-            where: { id: groupId },
-          });
-          if (groupExists) {
-            const existingMember = await prisma.groupMember.findUnique({
-              where: { groupId_userId: { groupId, userId: user.id } },
-            });
-            if (!existingMember) {
-              await prisma.groupMember.create({
-                data: {
-                  groupId,
-                  userId: user.id,
-                  roleId: GROUP_ROLE_IDS.MEMBER,
-                },
-              });
-            }
-          }
+          await handleGroupMembership(groupId, user.id);
         }
 
         results.push({ email, name, password, result: "created" });
