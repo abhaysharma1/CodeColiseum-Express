@@ -28,6 +28,7 @@ import {
   runtimeAnalyzer,
   toggleProblemHidden,
   toggleProblemPublish,
+  sendCredentialsEmail,
 } from "@/controllers/admin.controllers";
 import {
   getPendingProblems,
@@ -108,6 +109,7 @@ router.post("/bulk-signup/upload-csv", bulkSignupUploadCsv);
 router.post("/single-signup", adminSingleSignUp);
 router.patch("/assign-role", assignUserRoleByEmail);
 router.post("/reset-password-by-email", resetUserPasswordByEmail);
+router.post("/send-credentials-email", excelUpload.single("file"), sendCredentialsEmail);
 
 // Analytics Routes
 router.get("/analytics/overview", getOrgAnalyticsOverview);

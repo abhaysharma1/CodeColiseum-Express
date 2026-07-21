@@ -21,6 +21,7 @@ import { runRawCodeService } from "@/services/runReferenceSolution.service";
 import { analyzeRuntime } from "@/services/runtimeAnalyzer.service";
 import { C } from "@upstash/redis/zmscore-BjNXmrug";
 import { uploadToS3, deleteFromS3, getBucket, getBulkSignupBucket } from "@/utils/s3";
+import { transporter } from "@/utils/nodemailer";
 
 // Types
 interface JudgeStatus {
@@ -2136,6 +2137,176 @@ export const bulkSignupUploadCsv = async (
     await uploadToS3(key, csvContent, getBulkSignupBucket());
 
     res.json({ success: true, key });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const sendCredentialsEmail = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "CSV file is required" });
+    }
+
+    const csvText = req.file.buffer.toString("utf-8");
+    const lines = csvText.trim().split("\n");
+
+    if (lines.length < 2) {
+      return res.status(400).json({ error: "CSV file is empty or missing data rows" });
+    }
+
+    const results: Array<{
+      email: string;
+      name: string;
+      result: "sent" | "error";
+      message?: string;
+    }> = [];
+
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+    const fromAddress = process.env.GMAIL_USER || "noreply@codecoliseum.com";
+
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+
+      const parts = line.split(",");
+      const email = (parts[0] ?? "").trim().toLowerCase();
+      const password = (parts[1] ?? "").trim();
+
+      if (!email || !password) {
+        results.push({
+          email: email || "unknown",
+          name: "unknown",
+          result: "error",
+          message: `Row ${i + 1}: missing Email or Password`,
+        });
+        continue;
+      }
+
+      try {
+        const user = await prisma.user.findUnique({ where: { email } });
+
+        if (!user) {
+          results.push({
+            email,
+            name: "unknown",
+            result: "error",
+            message: "User not found",
+          });
+          continue;
+        }
+
+        const displayName = user.name || email.split("@")[0];
+
+        await transporter.sendMail({
+          from: fromAddress,
+          to: email,
+          subject: "Welcome to CodeColiseum — Your Account Details",
+          text: `Hi ${displayName},\n\nYour CodeColiseum account has been created. Here are your login credentials:\n\nEmail: ${email}\nPassword: ${password}\n\nLogin here: ${frontendUrl}/login\n\nFor security, please change your password after logging in.\n\nIf you didn't request this account, please ignore this email.\n\n— CodeColiseum Team`,
+          html: `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width" />
+  <title>Your CodeColiseum Account</title>
+  <style>
+    body { margin:0; padding:0; background:#f6f8fb; font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
+    .container { width:100%; max-width:600px; margin:28px auto; background:#ffffff; border-radius:12px; box-shadow:0 6px 18px rgba(19,24,31,0.08); overflow:hidden; }
+    .header { padding:20px 24px; display:flex; align-items:center; gap:12px; border-bottom:1px solid #eef2f6; }
+    .logo { width:40px; height:40px; border-radius:6px; background:#0b69ff; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:16px; }
+    .body { padding:28px 24px; color:#111827; line-height:1.45; }
+    .h1 { margin:0 0 8px 0; font-size:20px; font-weight:700; color:#0f172a; }
+    .p { margin:0 0 18px 0; color:#374151; font-size:15px; }
+    .creds { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:16px; margin:18px 0; }
+    .creds div { font-size:14px; margin:4px 0; color:#0f172a; }
+    .creds .label { color:#6b7280; font-size:12px; }
+    .creds .value { font-weight:600; font-family: monospace; }
+    .btn { display:inline-block; padding:12px 20px; border-radius:8px; text-decoration:none; font-weight:600; background:#0b69ff; color:#fff; }
+    .muted { color:#6b7280; font-size:13px; margin-top:20px; }
+    .footer { padding:16px 24px; font-size:12px; color:#9ca3af; text-align:center; background:#fafafa; }
+    @media (max-width:420px){ .body{padding:20px 16px} .header{padding:16px} }
+  </style>
+</head>
+<body>
+  <div style="display:none; max-height:0; overflow:hidden; font-size:1px; color:#fff; line-height:1px; max-width:0;">
+    Your CodeColiseum account credentials — login and start coding.
+  </div>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:transparent;">
+    <tr>
+      <td align="center">
+        <div class="container" role="article" aria-label="Account credentials">
+          <div class="header" role="banner">
+            <div class="logo" aria-hidden="true">CC</div>
+            <div>
+              <div style="font-weight:700; font-size:14px; color:#0f172a;">CodeColiseum</div>
+              <div style="font-size:12px; color:#6b7280;">Your Account</div>
+            </div>
+          </div>
+
+          <div class="body">
+            <h1 class="h1">Hi ${displayName},</h1>
+
+            <p class="p">
+              Your <strong>CodeColiseum</strong> account has been created. Here are your login credentials:
+            </p>
+
+            <div class="creds">
+              <div><span class="label">Email</span></div>
+              <div class="value">${email}</div>
+              <div style="margin-top:12px;"><span class="label">Password</span></div>
+              <div class="value">${password}</div>
+            </div>
+
+            <p style="text-align:center; margin:22px 0;">
+              <a href="${frontendUrl}/login" class="btn" target="_blank" rel="noopener">Login to CodeColiseum</a>
+            </p>
+
+            <p class="p">
+              For security, please change your password after logging in.
+            </p>
+
+            <p class="muted">
+              If you didn't request this account, please ignore this email.
+            </p>
+          </div>
+
+          <div class="footer">
+            &copy; 2025 CodeColiseum — <span style="color:#6b7280">Sharpen your skills. Compete. Learn.</span>
+          </div>
+        </div>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`,
+        });
+
+        results.push({ email, name: displayName, result: "sent" });
+      } catch (err: any) {
+        results.push({
+          email,
+          name: "unknown",
+          result: "error",
+          message: err?.message ?? "Failed to send email",
+        });
+      }
+    }
+
+    const sent = results.filter((r) => r.result === "sent");
+    const failed = results.filter((r) => r.result === "error");
+    const statusCode =
+      failed.length === 0 ? 200 : failed.length === results.length ? 400 : 207;
+
+    res.status(statusCode).json({
+      success: failed.length === 0,
+      results,
+      summary: { sent: sent.length, failed: failed.length, total: results.length },
+    });
   } catch (error) {
     next(error);
   }
