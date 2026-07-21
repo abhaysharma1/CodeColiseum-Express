@@ -564,6 +564,79 @@ export const submitCode = async (
   }
 };
 
+export const getProblemById = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      const error = new Error("Problem ID is required");
+      (error as any).status = 400;
+      return next(error);
+    }
+
+    let role: string | undefined;
+    let userId: string | undefined;
+    try {
+      const session = await auth.api.getSession({
+        headers: fromNodeHeaders(req.headers),
+      });
+      role = session?.user?.globalRoleId ?? undefined;
+      userId = session?.user?.id ?? undefined;
+    } catch {
+      // No session — treat as public user
+    }
+
+    const isAdmin = role === GLOBAL_ROLE_IDS.PLATFORM_ADMIN;
+    const isTeacher = role === GLOBAL_ROLE_IDS.ORG_TEACHER;
+
+    const where: any = { id };
+
+    if (!isAdmin) {
+      if (isTeacher) {
+        where.OR = [
+          { visibility: "PUBLIC", approvalStatus: "APPROVED" },
+          { ownerId: userId },
+        ];
+        where.hidden = false;
+      } else {
+        where.visibility = "PUBLIC";
+        where.approvalStatus = "APPROVED";
+        where.hidden = false;
+      }
+    }
+
+    const problem = await prisma.problem.findFirst({
+      where,
+      select: {
+        id: true,
+        number: true,
+        title: true,
+        description: true,
+        difficulty: true,
+        tags: {
+          select: {
+            tag: true,
+          },
+        },
+      },
+    });
+
+    if (!problem) {
+      const error = new Error("Problem not found");
+      (error as any).status = 404;
+      return next(error);
+    }
+
+    return res.status(200).json(problem);
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getSubmissionStatus = async (
   req: Request,
   res: Response,
