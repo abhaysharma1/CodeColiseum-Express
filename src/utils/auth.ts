@@ -12,17 +12,24 @@ export const auth = betterAuth({
   }),
   advanced: {
     defaultCookieAttributes: {
-      domain: isDev ?  undefined: ".codecoliseum.in" ,
+      domain: isDev ? undefined : ".codecoliseum.in",
       secure: !isDev,
       sameSite: isDev ? "lax" : "none",
       path: "/",
-    },  
+    },
   },
 
   emailAndPassword: {
     enabled: true,
     requireEmailVerification: false,
     autoSignIn: false,
+  },
+  session: {
+    cookieCache: {
+      enabled: true,
+      maxAge: 7 * 24 * 60 * 60, // Cache duration in seconds (5 minutes)
+      strategy: "jwt",
+    },
   },
   user: {
     additionalFields: {
