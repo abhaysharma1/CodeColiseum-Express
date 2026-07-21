@@ -1,8 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import { z } from "zod";
-import {
-  ProgrammingLanguage,
-} from "../../generated/prisma/enums";
+import { ProgrammingLanguage } from "../../generated/prisma/enums";
 import { Prisma } from "../../generated/prisma/client";
 import prisma from "@/utils/prisma";
 import { auth } from "@/utils/auth";
@@ -20,7 +18,12 @@ import {
 import { runRawCodeService } from "@/services/runReferenceSolution.service";
 import { analyzeRuntime } from "@/services/runtimeAnalyzer.service";
 import { C } from "@upstash/redis/zmscore-BjNXmrug";
-import { uploadToS3, deleteFromS3, getBucket, getBulkSignupBucket } from "@/utils/s3";
+import {
+  uploadToS3,
+  deleteFromS3,
+  getBucket,
+  getBulkSignupBucket,
+} from "@/utils/s3";
 import { transporter } from "@/utils/nodemailer";
 
 // Types
@@ -90,10 +93,13 @@ const stripCaseDelimiters = (value?: string | null): string => {
 const caseStartTokens = ["__CASE_START__", "CASE_START_MARKER", "_CASE_START_"];
 const caseEndTokens = ["__CASE_END__", "CASE_END_MARKER", "_CASE_END_"];
 
-const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const escapeRegex = (value: string) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const extractMarkedBlocks = (content: string): string[] => {
-  const normalized = (content ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const normalized = (content ?? "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n");
   const escapedStarts = caseStartTokens.map(escapeRegex);
   const escapedEnds = caseEndTokens.map(escapeRegex);
   const pattern = new RegExp(
@@ -107,7 +113,8 @@ const extractMarkedBlocks = (content: string): string[] => {
 const stripBlockMarkers = (block: string): string =>
   caseDelimiterTokens
     .reduce(
-      (cleaned, marker) => cleaned.replace(new RegExp(escapeRegex(marker), "g"), ""),
+      (cleaned, marker) =>
+        cleaned.replace(new RegExp(escapeRegex(marker), "g"), ""),
       block,
     )
     .trim();
@@ -292,32 +299,46 @@ const problemEditorSchema = z.object({
   tags: z.array(z.string()).default([]),
   description: z.string().optional().default(""),
   testCases: z.object({
-    public: z.array(z.object({
-      id: z.string(),
-      input: z.string(),
-      output: z.string()
-    })).default([]),
-    hidden: z.array(z.object({
-      id: z.string(),
-      input: z.string(),
-      output: z.string()
-    })).default([]),
+    public: z
+      .array(
+        z.object({
+          id: z.string(),
+          input: z.string(),
+          output: z.string(),
+        }),
+      )
+      .default([]),
+    hidden: z
+      .array(
+        z.object({
+          id: z.string(),
+          input: z.string(),
+          output: z.string(),
+        }),
+      )
+      .default([]),
   }),
-  driverCode: z.record(
-    z.string(),
-    z.object({
-      header: z.string().optional().default(""),
-      template: z.string().optional().default(""),
-      footer: z.string().optional().default(""),
-    }),
-  ).default(defaultDriverCode),
-  solutions: z.array(z.object({
-    id: z.string(),
-    language: languageSchema,
-    code: z.string()
-  })).default([]),
+  driverCode: z
+    .record(
+      z.string(),
+      z.object({
+        header: z.string().optional().default(""),
+        template: z.string().optional().default(""),
+        footer: z.string().optional().default(""),
+      }),
+    )
+    .default(defaultDriverCode),
+  solutions: z
+    .array(
+      z.object({
+        id: z.string(),
+        language: languageSchema,
+        code: z.string(),
+      }),
+    )
+    .default([]),
   status: z.enum(["DRAFT", "PUBLISHED"]).default("DRAFT"),
-  hidden: z.boolean().optional().default(false)
+  hidden: z.boolean().optional().default(false),
 });
 
 const bulkSignUpSchema = z.object({
@@ -337,7 +358,10 @@ const bulkSignUpSchema = z.object({
 const adminSingleSignUpSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(120),
   email: z.string().trim().email("Invalid email address"),
-  password: z.string().min(8, "Password must be at least 8 characters").max(128),
+  password: z
+    .string()
+    .min(8, "Password must be at least 8 characters")
+    .max(128),
   roleId: z
     .enum([
       GLOBAL_ROLE_IDS.ORG_STUDENT,
@@ -360,13 +384,14 @@ const adminAssignRoleSchema = z.object({
 
 const adminResetPasswordSchema = z.object({
   email: z.string().trim().email("Invalid email address"),
-  newPassword: z.string().min(8, "Password must be at least 8 characters").max(128),
+  newPassword: z
+    .string()
+    .min(8, "Password must be at least 8 characters")
+    .max(128),
   revokeSessions: z.boolean().optional().default(true),
 });
 
-function resolveGlobalRoleId(input: {
-  roleId?: string;
-}): string {
+function resolveGlobalRoleId(input: { roleId?: string }): string {
   if (input.roleId) {
     return input.roleId;
   }
@@ -440,8 +465,12 @@ export const uploadDriverCode = async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Validation Failed" });
     }
 
-    const { problemId, language, languageId, header, template, footer } = validation.data;
-    const resolvedLanguage = normalizeProgrammingLanguage({ language, languageId });
+    const { problemId, language, languageId, header, template, footer } =
+      validation.data;
+    const resolvedLanguage = normalizeProgrammingLanguage({
+      language,
+      languageId,
+    });
 
     if (!resolvedLanguage) {
       return res.status(400).json({ error: "Unsupported language" });
@@ -481,7 +510,10 @@ export const uploadDriverCode = async (req: Request, res: Response) => {
 };
 
 // Get Problem Test Generator
-export const getPerformanceConstraints = async (req: Request, res: Response) => {
+export const getPerformanceConstraints = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const { problemId } = req.query;
 
@@ -540,7 +572,10 @@ export const createUpdatePerformanceConstraints = async (
 };
 
 // Delete Performance Constraints
-export const deletePerformanceConstraints = async (req: Request, res: Response) => {
+export const deletePerformanceConstraints = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const { problemId } = req.query;
 
@@ -553,14 +588,18 @@ export const deletePerformanceConstraints = async (req: Request, res: Response) 
     });
 
     if (!existing) {
-      return res.status(404).json({ error: "No constraints found for this problem" });
+      return res
+        .status(404)
+        .json({ error: "No constraints found for this problem" });
     }
 
     await prisma.performanceConstraints.delete({
       where: { problemId },
     });
 
-    res.status(200).json({ success: true, message: "Constraints deleted successfully" });
+    res
+      .status(200)
+      .json({ success: true, message: "Constraints deleted successfully" });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Internal Server Error" });
@@ -589,20 +628,29 @@ export const getPerformanceTestCases = async (req: Request, res: Response) => {
   }
 };
 
-export const createPerformanceTestCase = async (req: Request, res: Response) => {
+export const createPerformanceTestCase = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const { problemId, name } = req.body;
 
     if (!problemId || !name) {
-      return res.status(400).json({ error: "Missing required fields: problemId, name" });
+      return res
+        .status(400)
+        .json({ error: "Missing required fields: problemId, name" });
     }
 
-    const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+    const files = req.files as
+      | { [fieldname: string]: Express.Multer.File[] }
+      | undefined;
     const inputFile = files?.input?.[0];
     const outputFile = files?.output?.[0];
 
     if (!inputFile || !outputFile) {
-      return res.status(400).json({ error: "Both input and output files are required" });
+      return res
+        .status(400)
+        .json({ error: "Both input and output files are required" });
     }
 
     const testCaseId = crypto.randomUUID();
@@ -628,7 +676,10 @@ export const createPerformanceTestCase = async (req: Request, res: Response) => 
   }
 };
 
-export const deletePerformanceTestCase = async (req: Request, res: Response) => {
+export const deletePerformanceTestCase = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const id = req.params.id as string;
 
@@ -647,7 +698,9 @@ export const deletePerformanceTestCase = async (req: Request, res: Response) => 
       where: { id },
     });
 
-    res.status(200).json({ success: true, message: "Performance test case deleted" });
+    res
+      .status(200)
+      .json({ success: true, message: "Performance test case deleted" });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Internal Server Error" });
@@ -927,7 +980,9 @@ export const validateProblem = async (req: Request, res: Response) => {
     const responses: JudgeResponse[] = [];
     for (const item of cases as Array<{ input: string; output: string }>) {
       const cleanInput = stripCaseDelimiters(item.input);
-      const rawExpected = (item.output ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+      const rawExpected = (item.output ?? "")
+        .replace(/\r\n/g, "\n")
+        .replace(/\r/g, "\n");
       const expectedMarkedBlocks = extractMarkedBlocks(rawExpected);
       const expectedUsesMarkers = expectedMarkedBlocks.length > 0;
       const expectedBlocks = expectedUsesMarkers
@@ -957,7 +1012,8 @@ export const validateProblem = async (req: Request, res: Response) => {
       const actualMarkedBlocks = expectedUsesMarkers
         ? extractMarkedBlocks(rawStdout).map(stripBlockMarkers)
         : [];
-      const missingRequiredMarkers = expectedUsesMarkers && actualMarkedBlocks.length === 0;
+      const missingRequiredMarkers =
+        expectedUsesMarkers && actualMarkedBlocks.length === 0;
       const visibleStdout = expectedUsesMarkers
         ? actualMarkedBlocks.join("\n")
         : stripCaseDelimiters(rawStdout);
@@ -994,11 +1050,17 @@ export const validateProblem = async (req: Request, res: Response) => {
         continue;
       }
 
-      const accepted = !missingRequiredMarkers && (expectedUsesMarkers
-        ? expectedBlocks.length === actualMarkedBlocks.length && expectedBlocks.every((block, index) => (
-            normalizeForCompare(block) === normalizeForCompare(actualMarkedBlocks[index] ?? "")
-          ))
-        : normalizeForCompare(rawStdout) === normalizeForCompare(expectedBlocks[0] ?? ""));
+      const accepted =
+        !missingRequiredMarkers &&
+        (expectedUsesMarkers
+          ? expectedBlocks.length === actualMarkedBlocks.length &&
+            expectedBlocks.every(
+              (block, index) =>
+                normalizeForCompare(block) ===
+                normalizeForCompare(actualMarkedBlocks[index] ?? ""),
+            )
+          : normalizeForCompare(rawStdout) ===
+            normalizeForCompare(expectedBlocks[0] ?? ""));
 
       responses.push({
         stdout: visibleStdout || null,
@@ -1110,13 +1172,15 @@ export const bulkSignUp = async (
         results.push({
           email,
           result: "error",
-          message: err?.body?.message ?? err?.message ?? "Failed to create account",
+          message:
+            err?.body?.message ?? err?.message ?? "Failed to create account",
         });
       }
     }
 
     const failed = results.filter((r) => r.result === "error");
-    const statusCode = failed.length === 0 ? 201 : failed.length === results.length ? 400 : 207;
+    const statusCode =
+      failed.length === 0 ? 201 : failed.length === results.length ? 400 : 207;
 
     res.status(statusCode).json({ success: failed.length === 0, results });
   } catch (error) {
@@ -1154,9 +1218,7 @@ export const adminSingleSignUp = async (
       });
     } catch (error: any) {
       const message =
-        error?.body?.message ??
-        error?.message ??
-        "Failed to create account";
+        error?.body?.message ?? error?.message ?? "Failed to create account";
 
       if (/already exists|another email/i.test(String(message))) {
         return res.status(409).json({
@@ -1324,7 +1386,11 @@ export const resetUserPasswordByEmail = async (
   }
 };
 
-export const getProblemForEditor = async (req: Request, res: Response, next: NextFunction): Promise<any> => {
+export const getProblemForEditor = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<any> => {
   try {
     const rawId = req.params.id;
     const id = Array.isArray(rawId) ? rawId[0] : rawId;
@@ -1341,7 +1407,7 @@ export const getProblemForEditor = async (req: Request, res: Response, next: Nex
         testCase: true,
         driverCode: true,
         referenceSolutions: true,
-      }
+      },
     });
 
     if (!problem) {
@@ -1356,13 +1422,17 @@ export const getProblemForEditor = async (req: Request, res: Response, next: Nex
       driverCodeResult[dc.language.toLowerCase()] = {
         header: dc.header || "",
         template: dc.template || "",
-        footer: dc.footer || ""
+        footer: dc.footer || "",
       };
     });
 
     // Handle testcases safely
-    const publicTests = problem.runTestCase?.cases ? (problem.runTestCase.cases as any[]) : [];
-    const hiddenTests = problem.testCase?.cases ? (problem.testCase.cases as any[]) : [];
+    const publicTests = problem.runTestCase?.cases
+      ? (problem.runTestCase.cases as any[])
+      : [];
+    const hiddenTests = problem.testCase?.cases
+      ? (problem.testCase.cases as any[])
+      : [];
 
     const result = {
       id: problem.id,
@@ -1372,12 +1442,24 @@ export const getProblemForEditor = async (req: Request, res: Response, next: Nex
       tags: problem.tags.map((t) => t.tag.name),
       description,
       testCases: {
-        public: publicTests.map((t: any, idx) => ({ id: t.id || `pub-${idx}`, input: t.input, output: t.output })),
-        hidden: hiddenTests.map((t: any, idx) => ({ id: t.id || `hid-${idx}`, input: t.input, output: t.output }))
+        public: publicTests.map((t: any, idx) => ({
+          id: t.id || `pub-${idx}`,
+          input: t.input,
+          output: t.output,
+        })),
+        hidden: hiddenTests.map((t: any, idx) => ({
+          id: t.id || `hid-${idx}`,
+          input: t.input,
+          output: t.output,
+        })),
       },
       driverCode: driverCodeResult,
-      solutions: problem.referenceSolutions.map((rs) => ({ id: rs.id, language: rs.language, code: rs.code })),
-      status: problem.isPublished ? "PUBLISHED" : "DRAFT"
+      solutions: problem.referenceSolutions.map((rs) => ({
+        id: rs.id,
+        language: rs.language,
+        code: rs.code,
+      })),
+      status: problem.isPublished ? "PUBLISHED" : "DRAFT",
     };
 
     return res.status(200).json(result);
@@ -1386,7 +1468,11 @@ export const getProblemForEditor = async (req: Request, res: Response, next: Nex
   }
 };
 
-export const upsertProblem = async (req: Request, res: Response, next: NextFunction): Promise<any> => {
+export const upsertProblem = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<any> => {
   try {
     const rawId = req.params.id;
     const id = Array.isArray(rawId) ? rawId[0] : rawId;
@@ -1394,7 +1480,6 @@ export const upsertProblem = async (req: Request, res: Response, next: NextFunct
     if (!bodyResult.success) {
       return res.status(400).json({ errors: bodyResult.error.format() });
     }
-
 
     const val = bodyResult.data;
 
@@ -1406,9 +1491,9 @@ export const upsertProblem = async (req: Request, res: Response, next: NextFunct
       isPublished &&
       !val.solutions?.some((solution) => solution.code.trim().length > 0)
     ) {
-      return res
-        .status(400)
-        .json({ message: "At least one reference solution is required to publish." });
+      return res.status(400).json({
+        message: "At least one reference solution is required to publish.",
+      });
     }
 
     // Handle tags creation in parallel
@@ -1416,13 +1501,21 @@ export const upsertProblem = async (req: Request, res: Response, next: NextFunct
       data: val.tags.map((t) => ({ name: t })),
       skipDuplicates: true,
     });
-    
+
     const dbTags = await prisma.tag.findMany({
       where: { name: { in: val.tags } },
     });
 
-    const publicCasesJson = val.testCases.public.map((t, idx) => ({ id: t.id || `pub-${idx}`, input: t.input, output: t.output }));
-    const hiddenCasesJson = val.testCases.hidden.map((t, idx) => ({ id: t.id || `hid-${idx}`, input: t.input, output: t.output }));
+    const publicCasesJson = val.testCases.public.map((t, idx) => ({
+      id: t.id || `pub-${idx}`,
+      input: t.input,
+      output: t.output,
+    }));
+    const hiddenCasesJson = val.testCases.hidden.map((t, idx) => ({
+      id: t.id || `hid-${idx}`,
+      input: t.input,
+      output: t.output,
+    }));
 
     const baseVisibility = {
       ownerType: "ADMIN" as const,
@@ -1434,91 +1527,95 @@ export const upsertProblem = async (req: Request, res: Response, next: NextFunct
 
     let problem;
     if (id) {
-       // Update path
-      const existingProblem = await prisma.problem.findUnique({ where: { id } });
-       if (!existingProblem) {
-         return res.status(404).json({ message: "Problem not found" });
-       }
-       
-       await prisma.$transaction(async (tx) => {
-          // Clear associations before update
-          await tx.problemTag.deleteMany({ where: { problemId: id } });
-          await tx.runTestCase.deleteMany({ where: { problemId: id } });
-          await tx.testCase.deleteMany({ where: { problemId: id } });
-          await tx.driverCode.deleteMany({ where: { problemId: id } });
-          await tx.referenceSolution.deleteMany({ where: { problemId: id } });
+      // Update path
+      const existingProblem = await prisma.problem.findUnique({
+        where: { id },
+      });
+      if (!existingProblem) {
+        return res.status(404).json({ message: "Problem not found" });
+      }
 
-          problem = await tx.problem.update({
-            where: { id },
-            data: {
-              ...baseVisibility,
-              title: val.title,
-              description: fullDescription,
-              difficulty: val.difficulty as any,
-              isPublished,
-              hidden: val.hidden,
-              tags: {
-                create: dbTags.map(t => ({ tagId: t.id }))
-              },
-              runTestCase: { create: { cases: publicCasesJson } },
-              testCase: { create: { cases: hiddenCasesJson } },
-              driverCode: {
-                 create: Object.entries(val.driverCode).map(([lang, codes]) => ({
-                    language: lang as any,
-                    header: codes.header,
-                    template: codes.template,
-                    footer: codes.footer
-                 }))
-              },
-              referenceSolutions: {
-                 create: val.solutions.map(sol => ({
-                    language: sol.language as any,
-                    code: sol.code
-                 }))
-              }
-            }
-          });
-       });
-    } else {
-       // Create path
-       const maxNumberMatch = await prisma.problem.findFirst({
-         orderBy: { number: 'desc' }
-       });
-       const nextNumber = (maxNumberMatch?.number || 0) + 1;
+      await prisma.$transaction(async (tx) => {
+        // Clear associations before update
+        await tx.problemTag.deleteMany({ where: { problemId: id } });
+        await tx.runTestCase.deleteMany({ where: { problemId: id } });
+        await tx.testCase.deleteMany({ where: { problemId: id } });
+        await tx.driverCode.deleteMany({ where: { problemId: id } });
+        await tx.referenceSolution.deleteMany({ where: { problemId: id } });
 
-       problem = await prisma.problem.create({
-         data: {
-           ...baseVisibility,
-           title: val.title,
-           description: fullDescription,
-           difficulty: val.difficulty as any,
-           number: nextNumber,
-           isPublished,
-           hidden: val.hidden,
-           tags: {
-             create: dbTags.map(t => ({ tagId: t.id }))
-           },
-           runTestCase: { create: { cases: publicCasesJson } },
-           testCase: { create: { cases: hiddenCasesJson } },
-           driverCode: {
+        problem = await tx.problem.update({
+          where: { id },
+          data: {
+            ...baseVisibility,
+            title: val.title,
+            description: fullDescription,
+            difficulty: val.difficulty as any,
+            isPublished,
+            hidden: val.hidden,
+            tags: {
+              create: dbTags.map((t) => ({ tagId: t.id })),
+            },
+            runTestCase: { create: { cases: publicCasesJson } },
+            testCase: { create: { cases: hiddenCasesJson } },
+            driverCode: {
               create: Object.entries(val.driverCode).map(([lang, codes]) => ({
-                 language: lang as any,
-                 header: codes.header,
-                 template: codes.template,
-                 footer: codes.footer
-              }))
-           },
-           referenceSolutions: {
-              create: val.solutions.map(sol => ({
-                 language: sol.language as any,
-                 code: sol.code
-              }))
-           }
-         }
-       });
+                language: lang as any,
+                header: codes.header,
+                template: codes.template,
+                footer: codes.footer,
+              })),
+            },
+            referenceSolutions: {
+              create: val.solutions.map((sol) => ({
+                language: sol.language as any,
+                code: sol.code,
+              })),
+            },
+          },
+        });
+      });
+    } else {
+      // Create path
+      const maxNumberMatch = await prisma.problem.findFirst({
+        orderBy: { number: "desc" },
+      });
+      const nextNumber = (maxNumberMatch?.number || 0) + 1;
+
+      problem = await prisma.problem.create({
+        data: {
+          ...baseVisibility,
+          title: val.title,
+          description: fullDescription,
+          difficulty: val.difficulty as any,
+          number: nextNumber,
+          isPublished,
+          hidden: val.hidden,
+          tags: {
+            create: dbTags.map((t) => ({ tagId: t.id })),
+          },
+          runTestCase: { create: { cases: publicCasesJson } },
+          testCase: { create: { cases: hiddenCasesJson } },
+          driverCode: {
+            create: Object.entries(val.driverCode).map(([lang, codes]) => ({
+              language: lang as any,
+              header: codes.header,
+              template: codes.template,
+              footer: codes.footer,
+            })),
+          },
+          referenceSolutions: {
+            create: val.solutions.map((sol) => ({
+              language: sol.language as any,
+              code: sol.code,
+            })),
+          },
+        },
+      });
     }
 
-    return res.status(200).json({ id: problem?.id, message: "Problem saved successfully" });
+    return res
+      .status(200)
+      .json({ id: problem?.id, message: "Problem saved successfully" });
   } catch (error) {
     next(error);
   }
@@ -1562,7 +1659,11 @@ export const runReferenceSolution = async (
   }
 };
 
-export const getProblemsForAdmin = async (req: Request, res: Response, next: NextFunction) => {
+export const getProblemsForAdmin = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const { searchValue, take, skip } = req.query;
 
@@ -1596,7 +1697,7 @@ export const getProblemsForAdmin = async (req: Request, res: Response, next: Nex
         difficulty: true,
         hidden: true,
       },
-      orderBy: { number: 'asc' },
+      orderBy: { number: "asc" },
     });
 
     res.status(200).json({ problems });
@@ -1609,7 +1710,11 @@ const toggleHiddenSchema = z.object({
   hidden: z.boolean(),
 });
 
-export const toggleProblemHidden = async (req: Request, res: Response, next: NextFunction) => {
+export const toggleProblemHidden = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const rawId = req.params.id;
     const id = Array.isArray(rawId) ? rawId[0] : rawId;
@@ -1643,7 +1748,11 @@ const togglePublishSchema = z.object({
   isPublished: z.boolean(),
 });
 
-export const toggleProblemPublish = async (req: Request, res: Response, next: NextFunction) => {
+export const toggleProblemPublish = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const rawId = req.params.id;
     const id = Array.isArray(rawId) ? rawId[0] : rawId;
@@ -1678,7 +1787,11 @@ const runtimeAnalyzerSchema = z.object({
   sourceCode: z.string().min(1, "Source code is required"),
 });
 
-export const runtimeAnalyzer = async (req: Request, res: Response, next: NextFunction) => {
+export const runtimeAnalyzer = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const parsed = runtimeAnalyzerSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -1832,7 +1945,9 @@ export const bulkStudentSignUp = async (
 
     for (const raw of rows) {
       const name = String(raw.Name ?? "").trim();
-      const email = String(raw.Email ?? "").trim().toLowerCase();
+      const email = String(raw.Email ?? "")
+        .trim()
+        .toLowerCase();
       const rollNumber = String(raw["Roll Number"] ?? "").trim();
       const branch = raw.Branch ? String(raw.Branch).trim() : null;
       const semester = raw.Semester ? Number(raw.Semester) : null;
@@ -1995,7 +2110,9 @@ export const bulkTeacherSignUp = async (
 
     for (const raw of rows) {
       const name = String(raw.Name ?? "").trim();
-      const email = String(raw.Email ?? "").trim().toLowerCase();
+      const email = String(raw.Email ?? "")
+        .trim()
+        .toLowerCase();
       const employeeId = String(raw["Employee ID"] ?? "").trim() || null;
       const department = raw.Department ? String(raw.Department).trim() : null;
 
@@ -2125,9 +2242,13 @@ export const bulkSignupUploadCsv = async (
       return res.status(400).json({ error: "csvContent is required" });
     }
 
-    let finalName = typeof filename === "string" && filename.trim()
-      ? filename.trim().replace(/[/\\:*?"<>|]/g, "_").replace(/\.{2,}/g, ".")
-      : `bulk_signup_passwords_${Date.now()}`;
+    let finalName =
+      typeof filename === "string" && filename.trim()
+        ? filename
+            .trim()
+            .replace(/[/\\:*?"<>|]/g, "_")
+            .replace(/\.{2,}/g, ".")
+        : `bulk_signup_passwords_${Date.now()}`;
 
     if (!finalName.endsWith(".csv")) {
       finalName += ".csv";
@@ -2156,7 +2277,9 @@ export const sendCredentialsEmail = async (
     const lines = csvText.trim().split("\n");
 
     if (lines.length < 2) {
-      return res.status(400).json({ error: "CSV file is empty or missing data rows" });
+      return res
+        .status(400)
+        .json({ error: "CSV file is empty or missing data rows" });
     }
 
     const results: Array<{
@@ -2214,74 +2337,89 @@ export const sendCredentialsEmail = async (
   <meta name="viewport" content="width=device-width" />
   <title>Your CodeColiseum Account</title>
   <style>
-    body { margin:0; padding:0; background:#f6f8fb; font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
-    .container { width:100%; max-width:600px; margin:28px auto; background:#ffffff; border-radius:12px; box-shadow:0 6px 18px rgba(19,24,31,0.08); overflow:hidden; }
-    .header { padding:20px 24px; display:flex; align-items:center; gap:12px; border-bottom:1px solid #eef2f6; }
-    .logo { width:40px; height:40px; border-radius:6px; background:#0b69ff; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:16px; }
-    .body { padding:28px 24px; color:#111827; line-height:1.45; }
-    .h1 { margin:0 0 8px 0; font-size:20px; font-weight:700; color:#0f172a; }
-    .p { margin:0 0 18px 0; color:#374151; font-size:15px; }
-    .creds { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:16px; margin:18px 0; }
-    .creds div { font-size:14px; margin:4px 0; color:#0f172a; }
-    .creds .label { color:#6b7280; font-size:12px; }
-    .creds .value { font-weight:600; font-family: monospace; }
-    .btn { display:inline-block; padding:12px 20px; border-radius:8px; text-decoration:none; font-weight:600; background:#0b69ff; color:#fff; }
-    .muted { color:#6b7280; font-size:13px; margin-top:20px; }
-    .footer { padding:16px 24px; font-size:12px; color:#9ca3af; text-align:center; background:#fafafa; }
-    @media (max-width:420px){ .body{padding:20px 16px} .header{padding:16px} }
+    body { margin:0; padding:0; background:#0e1420; font-family: 'Courier New', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .wrap { width:100%; padding:32px 16px; }
+    .container { width:100%; max-width:560px; margin:0 auto; background:#ffffff; border-radius:2px; overflow:hidden; }
+    .header { background:#0e1420; padding:28px 28px 24px; text-align:left; border-bottom:3px solid #d9a441; }
+    .eyebrow { color:#d9a441; font-size:11px; letter-spacing:3px; text-transform:uppercase; margin:0 0 6px; font-weight:700; }
+    .wordmark { color:#f5f2ea; font-size:24px; font-weight:700; letter-spacing:1px; margin:0; font-family: Georgia, 'Times New Roman', serif; }
+    .wordmark span { color:#d9a441; }
+    .tagline { color:#7d8aa3; font-size:12px; margin:6px 0 0; letter-spacing:0.5px; }
+    .body { padding:32px 28px 8px; color:#1b2333; font-family: Georgia, 'Times New Roman', serif; }
+    .greeting { font-size:19px; font-weight:700; margin:0 0 14px; color:#0e1420; }
+    .p { margin:0 0 20px; color:#3d4759; font-size:15px; line-height:1.6; font-family: Arial, Helvetica, sans-serif; }
+    .ticket-wrap { padding: 4px 28px 28px; }
+    .ticket { border: 2px dashed #c9a24b; border-radius: 6px; background: #fdfaf3; position: relative; }
+    .ticket-top { padding: 16px 20px 14px; border-bottom: 1px dashed #c9a24b; }
+    .ticket-label { font-family: Arial, Helvetica, sans-serif; font-size: 10px; letter-spacing: 2px; color: #a3812f; text-transform: uppercase; font-weight: 700; margin: 0 0 4px; }
+    .ticket-value { font-family: 'Courier New', ui-monospace, monospace; font-size: 16px; color: #17202f; font-weight: 700; word-break: break-all; margin: 0; }
+    .ticket-bottom { padding: 14px 20px 18px; display: flex; }
+    .ticket-id { font-family: Arial, Helvetica, sans-serif; font-size: 10px; letter-spacing: 1.5px; color: #b9924f; text-transform: uppercase; }
+    .cta-wrap { text-align:center; padding: 8px 28px 32px; }
+    .btn { display:inline-block; padding:14px 36px; background:#0e1420; color:#f5f2ea !important; text-decoration:none; font-family: Arial, Helvetica, sans-serif; font-size:13px; font-weight:700; letter-spacing: 2px; text-transform: uppercase; border-radius:2px; border-bottom: 3px solid #d9a441; }
+    .muted { font-family: Arial, Helvetica, sans-serif; font-size:12.5px; color:#8a93a6; margin: 0 28px 28px; line-height:1.5; }
+    .divider { height:1px; background:#e8e4d8; margin: 0 28px; }
+    .footer { padding:20px 28px; font-family: Arial, Helvetica, sans-serif; font-size:11px; color:#7d8aa3; text-align:center; background:#f7f5f0; letter-spacing:0.5px; }
+    @media (max-width:480px){
+      .header, .body, .ticket-wrap, .cta-wrap { padding-left:20px; padding-right:20px; }
+      .muted { margin-left:20px; margin-right:20px; }
+      .divider { margin-left:20px; margin-right:20px; }
+    }
   </style>
 </head>
 <body>
   <div style="display:none; max-height:0; overflow:hidden; font-size:1px; color:#fff; line-height:1px; max-width:0;">
-    Your CodeColiseum account credentials — login and start coding.
+    Your CodeColiseum credentials are ready — step into the arena.
   </div>
 
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:transparent;">
-    <tr>
-      <td align="center">
-        <div class="container" role="article" aria-label="Account credentials">
+  <div class="wrap">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px; margin:0 auto; background:#ffffff; border-radius:2px; overflow:hidden;">
+      <tr>
+        <td>
+
           <div class="header" role="banner">
-            <div class="logo" aria-hidden="true">CC</div>
-            <div>
-              <div style="font-weight:700; font-size:14px; color:#0f172a;">CodeColiseum</div>
-              <div style="font-size:12px; color:#6b7280;">Your Account</div>
-            </div>
+            <p class="eyebrow">Access Granted</p>
+            <p class="wordmark">CODE<span>COLISEUM</span></p>
+            <p class="tagline">SHARPEN YOUR SKILLS · COMPETE · LEARN</p>
           </div>
 
           <div class="body">
-            <h1 class="h1">Hi ${displayName},</h1>
-
-            <p class="p">
-              Your <strong>CodeColiseum</strong> account has been created. Here are your login credentials:
-            </p>
-
-            <div class="creds">
-              <div><span class="label">Email</span></div>
-              <div class="value">${email}</div>
-              <div style="margin-top:12px;"><span class="label">Password</span></div>
-              <div class="value">${password}</div>
-            </div>
-
-            <p style="text-align:center; margin:22px 0;">
-              <a href="${frontendUrl}/login" class="btn" target="_blank" rel="noopener">Login to CodeColiseum</a>
-            </p>
-
-            <p class="p">
-              For security, please change your password after logging in.
-            </p>
-
-            <p class="muted">
-              If you didn't request this account, please ignore this email.
-            </p>
+            <p class="greeting">Hi ${displayName},</p>
+            <p class="p">Your account is set up and your seat in the arena is reserved. Below is your competitor credential — everything you need to log in and start your first match.</p>
           </div>
+
+          <div class="ticket-wrap">
+            <div class="ticket">
+              <div class="ticket-top">
+                <p class="ticket-label">Email</p>
+                <p class="ticket-value">${email}</p>
+              </div>
+              <div class="ticket-top" style="border-bottom:none;">
+                <p class="ticket-label">Temporary password</p>
+                <p class="ticket-value">${password}</p>
+              </div>
+              <div class="ticket-bottom">
+                <span class="ticket-id">Competitor credential &nbsp;·&nbsp; Change password after first login</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="cta-wrap">
+            <a href="${frontendUrl}/login" class="btn" target="_blank" rel="noopener">Enter the Arena</a>
+          </div>
+
+          <div class="divider"></div>
+
+          <p class="muted" style="margin-top:20px;">Didn't request this account? You can safely ignore this email — no changes will be made without using the credential above.</p>
 
           <div class="footer">
-            &copy; 2025 CodeColiseum — <span style="color:#6b7280">Sharpen your skills. Compete. Learn.</span>
+            &copy; 2026 CodeColiseum — Sharpen your skills. Compete. Learn.
           </div>
-        </div>
-      </td>
-    </tr>
-  </table>
+
+        </td>
+      </tr>
+    </table>
+  </div>
 </body>
 </html>`,
         });
@@ -2305,10 +2443,13 @@ export const sendCredentialsEmail = async (
     res.status(statusCode).json({
       success: failed.length === 0,
       results,
-      summary: { sent: sent.length, failed: failed.length, total: results.length },
+      summary: {
+        sent: sent.length,
+        failed: failed.length,
+        total: results.length,
+      },
     });
   } catch (error) {
     next(error);
   }
 };
-
