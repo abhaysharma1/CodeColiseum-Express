@@ -160,6 +160,7 @@ export const getProblemDescription = async (
   try {
     const problem = await prisma.problem.findUnique({
       where: { id: problemId as string },
+      include: { tags: { include: { tag: true } } },
     });
 
     if (!problem) {

@@ -271,13 +271,14 @@ export const getProblems = async (
     // Add tag filter
     if (tags) {
       where.tags = {
-        some: { name: String(tags) },
+        some: { tag: { name: String(tags) } },
       };
     }
 
     // Add difficulty filter
-    if (difficulty) {
-      where.difficulty = String(difficulty);
+    const VALID_DIFFICULTIES = ["EASY", "MEDIUM", "HARD"];
+    if (difficulty && VALID_DIFFICULTIES.includes(String(difficulty).toUpperCase())) {
+      where.difficulty = String(difficulty).toUpperCase();
     }
 
     // Fetch problems from the database
