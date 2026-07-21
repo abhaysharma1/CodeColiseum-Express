@@ -6,18 +6,26 @@ const s3Client = new S3Client({
   forcePathStyle: process.env.S3_ENDPOINT ? true : undefined,
 });
 
-const BUCKET = process.env.PERFORMANCE_TEST_CASES_BUCKET;
+const PERF_BUCKET = process.env.PERFORMANCE_TEST_CASES_BUCKET;
+const BULK_SIGNUP_BUCKET = process.env.BULK_SIGNUP_BUCKET;
 
 export function getBucket(): string {
-  if (!BUCKET) {
+  if (!PERF_BUCKET) {
     throw new Error("PERFORMANCE_TEST_CASES_BUCKET is not configured");
   }
-  return BUCKET;
+  return PERF_BUCKET;
 }
 
-export async function uploadToS3(key: string, body: Buffer | string): Promise<void> {
+export function getBulkSignupBucket(): string {
+  if (!BULK_SIGNUP_BUCKET) {
+    throw new Error("BULK_SIGNUP_BUCKET is not configured");
+  }
+  return BULK_SIGNUP_BUCKET;
+}
+
+export async function uploadToS3(key: string, body: Buffer | string, bucket?: string): Promise<void> {
   const command = new PutObjectCommand({
-    Bucket: getBucket(),
+    Bucket: bucket ?? getBucket(),
     Key: key,
     Body: body,
   });

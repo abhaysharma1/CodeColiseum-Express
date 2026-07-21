@@ -16,6 +16,7 @@ import {
   adminSingleSignUp,
   bulkStudentSignUp,
   bulkTeacherSignUp,
+  bulkSignupUploadCsv,
   getColleges,
   createCollege,
   assignUserRoleByEmail,
@@ -103,6 +104,7 @@ router.get("/colleges", getColleges);
 router.post("/colleges", createCollege);
 router.post("/bulk-student-signup", excelUpload.single("file"), bulkStudentSignUp);
 router.post("/bulk-teacher-signup", excelUpload.single("file"), bulkTeacherSignUp);
+router.post("/bulk-signup/upload-csv", bulkSignupUploadCsv);
 router.post("/single-signup", adminSingleSignUp);
 router.patch("/assign-role", assignUserRoleByEmail);
 router.post("/reset-password-by-email", resetUserPasswordByEmail);

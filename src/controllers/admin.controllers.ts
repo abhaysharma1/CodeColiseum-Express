@@ -20,7 +20,7 @@ import {
 import { runRawCodeService } from "@/services/runReferenceSolution.service";
 import { analyzeRuntime } from "@/services/runtimeAnalyzer.service";
 import { C } from "@upstash/redis/zmscore-BjNXmrug";
-import { uploadToS3, deleteFromS3, getBucket } from "@/utils/s3";
+import { uploadToS3, deleteFromS3, getBucket, getBulkSignupBucket } from "@/utils/s3";
 
 // Types
 interface JudgeStatus {
@@ -2106,6 +2106,36 @@ export const bulkTeacherSignUp = async (
       results,
       passwordsCsv: `Email,Password\n${passwordsCsv}`,
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Upload Bulk Signup Passwords CSV to S3
+export const bulkSignupUploadCsv = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { csvContent, filename } = req.body;
+
+    if (!csvContent) {
+      return res.status(400).json({ error: "csvContent is required" });
+    }
+
+    let finalName = typeof filename === "string" && filename.trim()
+      ? filename.trim().replace(/[/\\:*?"<>|]/g, "_").replace(/\.{2,}/g, ".")
+      : `bulk_signup_passwords_${Date.now()}`;
+
+    if (!finalName.endsWith(".csv")) {
+      finalName += ".csv";
+    }
+
+    const key = `bulk-signups/${finalName}`;
+    await uploadToS3(key, csvContent, getBulkSignupBucket());
+
+    res.json({ success: true, key });
   } catch (error) {
     next(error);
   }
