@@ -2294,7 +2294,7 @@ export const sendCredentialsEmail = async (
     }> = [];
 
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
-    const fromAddress = process.env.GMAIL_USER || "noreply@codecoliseum.com";
+    const fromAddress = process.env.EMAIL_FROM || "noreply@codecoliseum.com";
 
     for (let i = 1; i < lines.length; i++) {
       const line = lines[i].trim();

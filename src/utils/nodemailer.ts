@@ -1,12 +1,32 @@
-import nodemailer from "nodemailer";
+import { sendEmail } from "@/services/email";
 
-// Gmail SMTP Configuration
-export const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.GMAIL_USER, 
-    pass: process.env.GMAIL_APP_PASSWORD, 
+const defaultFrom = process.env.EMAIL_FROM ?? "noreply@codecoliseum.com";
+
+interface SendMailOptions {
+  from?: string;
+  to: string | string[];
+  subject: string;
+  text?: string;
+  html?: string;
+}
+
+export const transporter = {
+  sendMail: async (options: SendMailOptions): Promise<void> => {
+    const { from: _from, to, subject, text, html } = options;
+    const result = await sendEmail({
+      to,
+      subject,
+      text,
+      html: html ?? text ?? "",
+    });
+    if (!result.success) {
+      throw new Error(
+        result.errorCode
+          ? `SES Error [${result.errorCode}]: ${result.error}`
+          : `Failed to send email: ${result.error}`,
+      );
+    }
   },
-});
+};
 
 export default transporter;

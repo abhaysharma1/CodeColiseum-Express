@@ -2,7 +2,6 @@ import "dotenv/config";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import prisma from "./prisma";
-import transporter from "./nodemailer";
 
 const isDev = process.env.NODE_ENV === "development";
 
