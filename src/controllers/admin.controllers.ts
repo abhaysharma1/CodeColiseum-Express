@@ -1951,6 +1951,7 @@ export const bulkStudentSignUp = async (
       const rollNumber = String(raw["Roll Number"] ?? "").trim();
       const branch = raw.Branch ? String(raw.Branch).trim() : null;
       const semester = raw.Semester ? Number(raw.Semester) : null;
+      const batch = raw.Batch ? String(raw.Batch).trim() : null;
 
       if (!name || !email || !rollNumber) {
         results.push({
@@ -1988,12 +1989,14 @@ export const bulkStudentSignUp = async (
             collegeId: college.id,
             branch,
             semester,
+            batch,
           },
           update: {
             rollNumber,
             collegeId: college.id,
             branch,
             semester,
+            batch,
           },
         });
 
@@ -2029,6 +2032,7 @@ export const bulkStudentSignUp = async (
             collegeId: college.id,
             branch,
             semester,
+            batch,
           },
         });
 
@@ -2518,7 +2522,7 @@ export const sendCredentialsEmail = async (
         }
 
         await transporter.sendMail({
-          from: fromAddress,
+          from: "ABHAY SHARMA",
           to: email,
           subject: "Welcome to CodeColiseum — Your Account Details",
           text: `Hi ${displayName},\n\nYour CodeColiseum account has been created. Here are your login credentials:\n\nEmail: ${email}\nPassword: ${password}\n\nLogin here: ${frontendUrl}/login\n\nFor security, please change your password after logging in.\n\nIf you didn't request this account, please ignore this email.\n\n— CodeColiseum Team`,
