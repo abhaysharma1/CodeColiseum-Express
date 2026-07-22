@@ -16,7 +16,7 @@ export interface SendEmailResult {
 }
 
 const fromAddress = (): string =>
-  process.env.EMAIL_FROM ?? "noreply@codecoliseum.com";
+  process.env.EMAIL_FROM ?? "noreply@codecoliseum.in";
 
 export async function sendEmail({
   to,
