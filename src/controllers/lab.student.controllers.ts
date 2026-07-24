@@ -8,6 +8,7 @@ import {
   getModuleProblemProgress,
   canAccessModuleProblem,
 } from "@/services/lab.service";
+import { verifySEB } from "@/utils/exam.utils";
 
 export const getMyLabs = async (
   req: Request,
@@ -91,6 +92,7 @@ export const getMyLabs = async (
           id: lab.id,
           title: lab.title,
           description: lab.description,
+          sebEnabled: lab.sebEnabled,
           modulesCount: visibleModules.length,
           modules: visibleModules,
         };
@@ -188,6 +190,7 @@ export const getMyLab = async (
       id: lab.id,
       title: lab.title,
       description: lab.description,
+      sebEnabled: (lab as any).sebEnabled,
       modulesCount: visibleModules.length,
       modules: visibleModules,
     });
@@ -229,6 +232,15 @@ export const getModuleProblems = async (
 
     if (module.unlockAt && module.unlockAt > new Date()) {
       return res.status(403).json({ success: false, message: "Module is locked" });
+    }
+
+    const lab = await prisma.lab.findUnique({
+      where: { id: module.labId },
+      select: { sebEnabled: true },
+    });
+
+    if (lab?.sebEnabled) {
+      verifySEB(req);
     }
 
     const problems = await prisma.moduleProblem.findMany({
@@ -274,6 +286,7 @@ export const getModuleProblems = async (
         unlockAt: module.unlockAt,
         dueAt: module.dueAt,
         assessmentExamId: module.assessmentExamId,
+        sebEnabled: lab?.sebEnabled ?? false,
       },
       completedProblems,
       totalProblems,

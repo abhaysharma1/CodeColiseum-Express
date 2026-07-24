@@ -52,6 +52,7 @@ export const createLab = async (
         aiEnabled: parsed.data.aiEnabled,
         aiMaxMessages: parsed.data.aiMaxMessages ?? null,
         aiMaxTokens: parsed.data.aiMaxTokens ?? null,
+        sebEnabled: parsed.data.sebEnabled ?? false,
       },
     });
 
@@ -110,6 +111,7 @@ export const getLabs = async (
         aiEnabled: lab.aiEnabled,
         aiMaxMessages: lab.aiMaxMessages,
         aiMaxTokens: lab.aiMaxTokens,
+        sebEnabled: lab.sebEnabled,
         modulesCount: lab._count.modules,
         assignedGroupsCount: lab._count.assignments,
         visibility: lab.visibility,

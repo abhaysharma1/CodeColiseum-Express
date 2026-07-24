@@ -1029,6 +1029,7 @@ model Lab {
   aiEnabled           Boolean @default(false)
   aiMaxMessages       Int? // per student per lab per problem
   aiMaxTokens         Int? // per student per lab per problem
+  sebEnabled          Boolean @default(false)
 
   // Marketplace fields
   visibility          LabVisibility      @default(PRIVATE)

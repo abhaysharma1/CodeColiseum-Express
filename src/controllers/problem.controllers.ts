@@ -15,6 +15,7 @@ import {
   resolveLanguageFromInput,
 } from "@/utils/languageCatalog";
 import { canAccessModuleProblem } from "@/services/lab.service";
+import { verifySEB } from "@/utils/exam.utils";
 
 const CASE_START_TOKEN = "_CASE_START_";
 const CASE_END_TOKEN = "_CASE_END_";
@@ -171,6 +172,25 @@ async function verifyModuleProblemAccess(
     const err = new Error(messages[access.reason!] || "Problem not accessible");
     (err as any).status = 403;
     throw err;
+  }
+}
+
+async function verifyModuleProblemSEB(
+  req: Request,
+  moduleProblemId: string,
+): Promise<void> {
+  const mp = await (prisma as any).moduleProblem.findUnique({
+    where: { id: moduleProblemId },
+    select: {
+      module: {
+        select: {
+          lab: { select: { sebEnabled: true } },
+        },
+      },
+    },
+  });
+  if (mp?.module?.lab?.sebEnabled) {
+    verifySEB(req);
   }
 }
 
@@ -506,6 +526,7 @@ export const runCode = async (
 
     if (moduleProblemId && req.user?.id) {
       await verifyModuleProblemAccess(req.user.id, moduleProblemId);
+      await verifyModuleProblemSEB(req, moduleProblemId);
     }
 
     const requestData: RunCodeRequest = {
@@ -548,6 +569,7 @@ export const submitCode = async (
 
     if (moduleProblemId && req.user?.id) {
       await verifyModuleProblemAccess(req.user.id, moduleProblemId);
+      await verifyModuleProblemSEB(req, moduleProblemId);
     }
 
     const requestData: SubmitCodeRequest = {
