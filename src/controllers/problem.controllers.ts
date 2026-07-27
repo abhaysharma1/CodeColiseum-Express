@@ -397,7 +397,7 @@ export const getSubmissions = async (
     }
 
     const userId = session.user.id;
-    const { problemId } = req.body;
+    const { problemId, skip = 0, take = 20 } = req.body;
 
     if (!problemId) {
       const error = new Error("problemId is required");
@@ -416,24 +416,38 @@ export const getSubmissions = async (
       return next(error);
     }
 
-    const submissions = await prisma.selfSubmission.findMany({
-      where: {
-        problemId,
-        userId,
-      },
-      select: {
-        id: true,
-        language: true,
-        createdAt: true,
-        passedTestcases: true,
-        sourceCode: true,
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
+    const [submissions, total] = await Promise.all([
+      prisma.selfSubmission.findMany({
+        where: {
+          problemId,
+          userId,
+        },
+        select: {
+          id: true,
+          language: true,
+          createdAt: true,
+          passedTestcases: true,
+          totalTestcases: true,
+          status: true,
+          executionTime: true,
+          memory: true,
+          sourceCode: true,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        skip: Number(skip),
+        take: Number(take),
+      }),
+      prisma.selfSubmission.count({
+        where: {
+          problemId,
+          userId,
+        },
+      }),
+    ]);
 
-    res.status(200).json({ submissions });
+    res.status(200).json({ submissions, total, skip: Number(skip), take: Number(take) });
   } catch (error) {
     next(error);
   }
