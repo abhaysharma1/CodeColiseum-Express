@@ -318,6 +318,15 @@ export const getProblems = async (
             tag: true,
           },
         },
+        performanceConstraints: {
+          select: {
+            cppTimeLimitMs: true,
+            javaTimeLimitMs: true,
+            pythonTimeLimitMs: true,
+            jsTimeLimitMs: true,
+            memoryLimitMB: true,
+          },
+        },
       },
     });
 
