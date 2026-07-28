@@ -331,7 +331,6 @@ async function runCodeBatch(
   );
 
   if (response.data.compile?.stderr?.trim()) {
-    console.log(response.data.compile);
     throw new SubmissionExecutionError("Compilation failed", {
       status: "COMPILE_ERROR",
       stderr: response.data.compile.stderr,

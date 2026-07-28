@@ -148,11 +148,21 @@ export async function runCodeService(
     expectedOutput: tc.output,
   }));
 
-  const result = await executeSubmission(
-    { language: normalizedLanguage, sourceCode: code },
-    normalizedTestcases,
-    { header: driver?.header ?? null, footer: driver?.footer ?? null },
-  );
+  let result: Awaited<ReturnType<typeof executeSubmission>>;
+  try {
+    result = await executeSubmission(
+      { language: normalizedLanguage, sourceCode: code },
+      normalizedTestcases,
+      { header: driver?.header ?? null, footer: driver?.footer ?? null },
+    );
+  } catch (error: any) {
+    if (error instanceof SubmissionExecutionError && error.context?.status === "COMPILE_ERROR") {
+      const err = new Error(error.context.stderr || "Compilation failed");
+      (err as any).status = 400;
+      throw err;
+    }
+    throw error;
+  }
 
   const responses: PistonExecutionResult[] = result.details.map((d) => ({
     language: normalizedLanguage,
