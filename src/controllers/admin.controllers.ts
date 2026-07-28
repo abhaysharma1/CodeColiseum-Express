@@ -9,14 +9,14 @@ import { GLOBAL_ROLE_IDS, GROUP_ROLE_IDS } from "@/permissions/role.constants";
 import XLSX from "xlsx";
 import {
   isSupportedLanguageKey,
-  resolveLanguageId,
   resolveLanguageFromInput,
   supportedLanguageKeys,
   toRuntimeLanguageId,
 } from "@/utils/languageCatalog";
 import { runRawCodeService } from "@/services/runReferenceSolution.service";
 import { analyzeRuntime } from "@/services/runtimeAnalyzer.service";
-import { executeCode } from "@/services/codeExecutor.service";
+import { executeCode, executeSubmission, SubmissionExecutionError } from "@/services/codeExecutor.service";
+import { NormalizedTestcase } from "@/services/types";
 import { C } from "@upstash/redis/zmscore-BjNXmrug";
 import {
   uploadToS3,
@@ -66,48 +66,6 @@ const stripCaseDelimiters = (value?: string | null): string => {
     .filter((line) => line.length > 0 && !caseDelimiterTokens.includes(line))
     .join("\n")
     .trim();
-};
-
-const caseStartTokens = ["__CASE_START__", "CASE_START_MARKER", "_CASE_START_"];
-const caseEndTokens = ["__CASE_END__", "CASE_END_MARKER", "_CASE_END_"];
-
-const escapeRegex = (value: string) =>
-  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-const extractMarkedBlocks = (content: string): string[] => {
-  const normalized = (content ?? "")
-    .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n");
-  const escapedStarts = caseStartTokens.map(escapeRegex);
-  const escapedEnds = caseEndTokens.map(escapeRegex);
-  const pattern = new RegExp(
-    `(?:${escapedStarts.join("|")})[\\s\\S]*?(?:${escapedEnds.join("|")})`,
-    "g",
-  );
-
-  return (normalized.match(pattern) ?? []).map((block) => block.trim());
-};
-
-const stripBlockMarkers = (block: string): string =>
-  caseDelimiterTokens
-    .reduce(
-      (cleaned, marker) =>
-        cleaned.replace(new RegExp(escapeRegex(marker), "g"), ""),
-      block,
-    )
-    .trim();
-
-const normalizeForCompare = (value?: string | null): string => {
-  const normalized = stripCaseDelimiters(value ?? "");
-  if (!normalized) {
-    return "";
-  }
-
-  return normalized
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .join("\n");
 };
 
 interface CompileErrorInfo {
@@ -908,117 +866,77 @@ export const validateProblem = async (req: Request, res: Response) => {
     const cases = JSON.parse(JSON.stringify(testCasesBefore));
     const code = firstProblem.referenceSolution.code;
 
-    const runtimeLanguageId = resolveLanguageId({
-      language: firstProblem.referenceSolution.language,
-      languageId: firstProblem.referenceSolution.languageId,
-    });
-
     const language = normalizeProgrammingLanguage({
       language: firstProblem.referenceSolution.language,
       languageId: firstProblem.referenceSolution.languageId,
     });
 
-    if (!runtimeLanguageId || !language) {
+    if (!language) {
       return res.status(400).json({ error: "Unsupported language" });
     }
 
-    const responses: JudgeResponse[] = [];
-    for (const item of cases as Array<{ input: string; output: string }>) {
-      const cleanInput = stripCaseDelimiters(item.input);
-      const rawExpected = (item.output ?? "")
-        .replace(/\r\n/g, "\n")
-        .replace(/\r/g, "\n");
-      const expectedMarkedBlocks = extractMarkedBlocks(rawExpected);
-      const expectedUsesMarkers = expectedMarkedBlocks.length > 0;
-      const expectedBlocks = expectedUsesMarkers
-        ? expectedMarkedBlocks.map(stripBlockMarkers)
-        : [stripCaseDelimiters(rawExpected)];
+    const normalizedTestcases: NormalizedTestcase[] = cases.map(
+      (tc: any, idx: number) => ({
+        testcaseId: `tc-${idx + 1}`,
+        input: typeof tc.input === "string" ? tc.input : "",
+        expectedOutput: typeof tc.output === "string" ? tc.output : "",
+      }),
+    );
 
-      let execResponse: Awaited<ReturnType<typeof executeCode>>;
-      try {
-        execResponse = await executeCode({
-          language,
-          version: "*",
-          files: [{ content: code }],
-          stdin: cleanInput,
-          run_timeout: 10000,
-          compile_timeout: 10000,
-        });
-      } catch (err: any) {
-        if (err?.context?.status === "COMPILE_ERROR") {
-          responses.push({
-            stdout: null,
-            stderr: err.context.stderr || null,
-            compile_output: err.context.stderr || null,
-            message: null,
-            status: { id: 6, description: "Compilation Error" },
-            time: "0",
-            memory: 0,
-            token: "",
-            stdin: cleanInput,
-            expected_output: expectedBlocks.join("\n"),
-          });
-          continue;
-        }
-        throw err;
-      }
-
-      const rawStdout = execResponse.stdout;
-      const actualMarkedBlocks = expectedUsesMarkers
-        ? extractMarkedBlocks(rawStdout).map(stripBlockMarkers)
-        : [];
-      const missingRequiredMarkers =
-        expectedUsesMarkers && actualMarkedBlocks.length === 0;
-      const visibleStdout = expectedUsesMarkers
-        ? actualMarkedBlocks.join("\n")
-        : stripCaseDelimiters(rawStdout);
-
-      if (typeof execResponse.exitCode === "number" && execResponse.exitCode !== 0) {
-        responses.push({
-          stdout: stripCaseDelimiters(rawStdout) || null,
-          stderr: execResponse.stderr || null,
-          compile_output: null,
-          message: execResponse.signal || null,
-          status: { id: 11, description: "Runtime Error" },
+    let execResult: Awaited<ReturnType<typeof executeSubmission>>;
+    try {
+      execResult = await executeSubmission(
+        { language, sourceCode: code },
+        normalizedTestcases,
+      );
+    } catch (err: any) {
+      if (err instanceof SubmissionExecutionError && err.context?.status === "COMPILE_ERROR") {
+        const responses: JudgeResponse[] = normalizedTestcases.map((tc) => ({
+          stdout: null,
+          stderr: err.context.stderr || null,
+          compile_output: err.context.stderr || null,
+          message: null,
+          status: { id: 6, description: "Compilation Error" },
           time: "0",
           memory: 0,
           token: "",
-          stdin: cleanInput,
-          expected_output: expectedBlocks.join("\n"),
+          stdin: stripCaseDelimiters(tc.input),
+          expected_output: stripCaseDelimiters(tc.expectedOutput),
+        }));
+        return res.status(200).json({
+          responses,
+          cases: normalizedTestcases.map((tc) => ({
+            input: tc.input,
+            output: tc.expectedOutput,
+          })),
         });
-        continue;
       }
-
-      const accepted =
-        !missingRequiredMarkers &&
-        (expectedUsesMarkers
-          ? expectedBlocks.length === actualMarkedBlocks.length &&
-            expectedBlocks.every(
-              (block, index) =>
-                normalizeForCompare(block) ===
-                normalizeForCompare(actualMarkedBlocks[index] ?? ""),
-            )
-          : normalizeForCompare(rawStdout) ===
-            normalizeForCompare(expectedBlocks[0] ?? ""));
-
-      responses.push({
-        stdout: visibleStdout || null,
-        stderr: execResponse.stderr || null,
-        compile_output: null,
-        message: null,
-        status: {
-          id: accepted ? 3 : 4,
-          description: accepted ? "Accepted" : "Wrong Answer",
-        },
-        time: "0",
-        memory: 0,
-        token: "",
-        stdin: cleanInput,
-        expected_output: expectedBlocks.join("\n"),
-      });
+      throw err;
     }
 
-    res.status(200).json({ responses, cases });
+    const responses: JudgeResponse[] = execResult.details.map((d) => ({
+      stdout: d.stdout || null,
+      stderr: d.stderr || null,
+      compile_output: null,
+      message: null,
+      status: {
+        id: d.passed ? 3 : 4,
+        description: d.passed ? "Accepted" : "Wrong Answer",
+      },
+      time: String(d.timeMs),
+      memory: d.memoryKb,
+      token: "",
+      stdin: d.input,
+      expected_output: d.expectedOutput,
+    }));
+
+    res.status(200).json({
+      responses,
+      cases: normalizedTestcases.map((tc) => ({
+        input: tc.input,
+        output: tc.expectedOutput,
+      })),
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Internal Server Error" });
