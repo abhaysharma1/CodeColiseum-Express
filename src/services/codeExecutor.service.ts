@@ -359,13 +359,15 @@ export async function executeSubmission(
     `${driver?.header ?? ""}\n${submission.sourceCode}\n${driver?.footer ?? ""}`,
   );
 
+  const usesMarkers = testcases.some((tc) => hasMarkers(tc.expectedOutput ?? ""));
+
   const cleanedCases = testcases.map((tc) => ({
     ...tc,
     input: stripCaseDelimiters(tc.input ?? ""),
-    expectedOutput: stripCaseDelimiters(tc.expectedOutput ?? ""),
+    expectedOutput: usesMarkers
+      ? (tc.expectedOutput ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim()
+      : stripCaseDelimiters(tc.expectedOutput ?? ""),
   }));
-
-  const usesMarkers = cleanedCases.some((tc) => hasMarkers(tc.expectedOutput));
 
   if (usesMarkers) {
     return executeLegacyMarkers(language, sourceCode, cleanedCases);
