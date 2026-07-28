@@ -175,9 +175,9 @@ export async function runCodeService(
 
   return {
     responses,
-    cases: cases.map((tc) => ({
-      input: tc.input,
-      output: tc.output,
+    cases: result.details.map((d) => ({
+      input: d.input,
+      output: d.expectedOutput,
     })),
     results,
     passedCount: result.passedCount,

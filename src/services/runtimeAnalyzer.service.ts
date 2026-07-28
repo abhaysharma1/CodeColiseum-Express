@@ -118,7 +118,7 @@ export async function analyzeRuntime(
           : d.stderr
             ? ("RUNTIME_ERROR" as const)
             : ("WRONG_ANSWER" as const),
-        input: d.stdout,
+        input: d.input,
         expectedOutput: d.expectedOutput,
         actualOutput: d.stdout,
         stderr: d.stderr,

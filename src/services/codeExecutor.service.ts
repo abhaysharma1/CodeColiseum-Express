@@ -408,6 +408,7 @@ async function executeBatch(
     if (run.status === "skipped") {
       details.push({
         testcaseId: tc.testcaseId,
+        input: tc.input,
         passed: false,
         stdout: "",
         expectedOutput: tc.expectedOutput,
@@ -433,6 +434,7 @@ async function executeBatch(
 
     details.push({
       testcaseId: tc.testcaseId,
+      input: tc.input,
       passed,
       stdout,
       expectedOutput: tc.expectedOutput,
@@ -445,6 +447,7 @@ async function executeBatch(
   for (let i = maxLength; i < cases.length; i += 1) {
     details.push({
       testcaseId: cases[i].testcaseId,
+      input: cases[i].input,
       passed: false,
       stdout: "",
       expectedOutput: cases[i].expectedOutput,
@@ -587,6 +590,7 @@ async function executeLegacyMarkers(
 
     details.push({
       testcaseId: cases[i]?.testcaseId ?? `tc-${i + 1}`,
+      input: normalizedCases[i].input,
       passed,
       stdout: visibleOutput,
       expectedOutput: normalizedCases[i].output,

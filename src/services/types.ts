@@ -46,6 +46,7 @@ export interface ExecutionResult {
   failedCaseIndex: number | null;
   details: Array<{
     testcaseId: string;
+    input: string;
     passed: boolean;
     stdout: string;
     expectedOutput: string;
