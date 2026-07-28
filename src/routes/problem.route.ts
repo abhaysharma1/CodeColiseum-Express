@@ -16,8 +16,8 @@ const router = Router();
 
 router.get("/getproblems", getProblems);
 router.get("/gettags", getProblemTags);
-router.get("/:id", getProblemById);
 router.get("/gettestcases", getProblemTestCases);
+router.get("/:id", getProblemById);
 router.post("/gettemplatecode", getTemplateCode);
 
 router.use(isLoggedIn);
