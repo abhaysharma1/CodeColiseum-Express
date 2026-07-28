@@ -2,7 +2,7 @@ import { Request } from "express";
 import prisma from "../utils/prisma";
 import { auth } from "../utils/auth";
 import { fromNodeHeaders } from "better-auth/node";
-import { sanitizeSourceCode } from "./codeRunner.service";
+import { sanitizeSourceCode } from "./codeExecutor.service";
 import {
   fromRuntimeLanguageId,
   getLanguageLabel,

@@ -4,7 +4,6 @@ import { ProgrammingLanguage } from "../../generated/prisma/enums";
 import { Prisma } from "../../generated/prisma/client";
 import prisma from "@/utils/prisma";
 import { auth } from "@/utils/auth";
-import axios from "axios";
 import { hashPassword } from "better-auth/crypto";
 import { GLOBAL_ROLE_IDS, GROUP_ROLE_IDS } from "@/permissions/role.constants";
 import XLSX from "xlsx";
@@ -17,6 +16,7 @@ import {
 } from "@/utils/languageCatalog";
 import { runRawCodeService } from "@/services/runReferenceSolution.service";
 import { analyzeRuntime } from "@/services/runtimeAnalyzer.service";
+import { executeCode } from "@/services/codeExecutor.service";
 import { C } from "@upstash/redis/zmscore-BjNXmrug";
 import {
   uploadToS3,
@@ -43,28 +43,6 @@ interface JudgeResponse {
   status: JudgeStatus;
   stdin?: string | null;
   expected_output?: string | null;
-}
-
-interface PistonStage {
-  stdout: string;
-  stderr: string;
-  output: string;
-  code: number | null;
-  signal: string | null;
-}
-
-interface PistonExecutionResult {
-  language: string;
-  version: string;
-  run: PistonStage;
-  compile?: PistonStage;
-}
-
-interface PistonExecuteRequest {
-  language: string;
-  version: string;
-  files: Array<{ content: string }>;
-  stdin: string;
 }
 
 const normalizeOutput = (value?: string | null): string =>
@@ -132,23 +110,26 @@ const normalizeForCompare = (value?: string | null): string => {
     .join("\n");
 };
 
+interface CompileErrorInfo {
+  stderr?: string;
+  signal?: string | null;
+}
+
 const toJudgeLikeResponse = (input: {
-  result: PistonExecutionResult;
+  result: { stdout: string; stderr?: string; exitCode?: number | null; signal?: string | null; compileError?: CompileErrorInfo };
   stdin: string;
   expectedOutput: string;
 }): JudgeResponse => {
   const { result, stdin, expectedOutput } = input;
-  const compile = result.compile;
-  const run = result.run;
   const cleanStdin = stripCaseDelimiters(stdin);
   const cleanExpectedOutput = stripCaseDelimiters(expectedOutput);
 
-  if (compile && compile.code !== 0) {
+  if (result.compileError) {
     return {
-      stdout: compile.stdout || null,
-      stderr: compile.stderr || null,
-      compile_output: compile.stderr || compile.output || null,
-      message: compile.signal || null,
+      stdout: null,
+      stderr: result.compileError.stderr || null,
+      compile_output: result.compileError.stderr || null,
+      message: result.compileError.signal || null,
       status: { id: 6, description: "Compilation Error" },
       time: "0",
       memory: 0,
@@ -158,12 +139,12 @@ const toJudgeLikeResponse = (input: {
     };
   }
 
-  if (run.code !== 0) {
+  if (typeof result.exitCode === "number" && result.exitCode !== 0) {
     return {
-      stdout: run.stdout || null,
-      stderr: run.stderr || null,
+      stdout: result.stdout || null,
+      stderr: result.stderr || null,
       compile_output: null,
-      message: run.signal || null,
+      message: result.signal || null,
       status: { id: 11, description: "Runtime Error" },
       time: "0",
       memory: 0,
@@ -173,13 +154,13 @@ const toJudgeLikeResponse = (input: {
     };
   }
 
-  const actual = normalizeOutput(run.stdout || run.output || "");
+  const actual = normalizeOutput(result.stdout || "");
   const expected = normalizeOutput(cleanExpectedOutput);
   const accepted = actual === expected;
 
   return {
-    stdout: run.stdout || run.output || null,
-    stderr: run.stderr || null,
+    stdout: result.stdout || null,
+    stderr: result.stderr || null,
     compile_output: null,
     message: null,
     status: {
@@ -223,21 +204,6 @@ const normalizeProgrammingLanguage = (input: {
   }
 
   return isProgrammingLanguage(resolved) ? resolved : null;
-};
-
-const getPistonExecuteUrl = (): string | null => {
-  const rawPistonUri = process.env.PISTON_URI?.trim();
-
-  if (!rawPistonUri) {
-    return null;
-  }
-
-  try {
-    const parsed = new URL(rawPistonUri);
-    return `${parsed.toString().replace(/\/$/, "")}/api/v2/execute`;
-  } catch {
-    return null;
-  }
 };
 
 // Validation schemas
@@ -849,38 +815,24 @@ export const validateComplexityCases = async (req: Request, res: Response) => {
 
     const expectedComplexityValue = casesData.expectedComplexity;
     const cases = casesData.cases;
-    let results: JudgeResponse[] = [];
-
-    const pistonExecuteUrl = getPistonExecuteUrl();
-    if (!pistonExecuteUrl) {
-      return res.status(500).json({
-        error: "Piston is not configured. Set a valid PISTON_URI",
-      });
-    }
+    const results: JudgeResponse[] = [];
 
     for (let i = 0; i < cases.length; i++) {
       try {
         const cleanInput = stripCaseDelimiters(cases[i].input);
         const cleanOutput = stripCaseDelimiters(cases[i].output);
 
-        const payload: PistonExecuteRequest = {
+        const execResponse = await executeCode({
           language: refCode.language,
           version: "*",
           files: [{ content: refCode.code }],
           stdin: cleanInput,
-        };
-
-        const response = await axios.post<PistonExecutionResult>(
-          pistonExecuteUrl,
-          payload,
-          {
-            headers: { "Content-Type": "application/json" },
-            timeout: 15000,
-          },
-        );
+          run_timeout: 10000,
+          compile_timeout: 10000,
+        });
 
         results[i] = toJudgeLikeResponse({
-          result: response.data,
+          result: execResponse,
           stdin: cleanInput,
           expectedOutput: cleanOutput,
         });
@@ -970,13 +922,6 @@ export const validateProblem = async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Unsupported language" });
     }
 
-    const pistonExecuteUrl = getPistonExecuteUrl();
-    if (!pistonExecuteUrl) {
-      return res.status(500).json({
-        error: "Piston is not configured. Set a valid PISTON_URI",
-      });
-    }
-
     const responses: JudgeResponse[] = [];
     for (const item of cases as Array<{ input: string; output: string }>) {
       const cleanInput = stripCaseDelimiters(item.input);
@@ -989,26 +934,36 @@ export const validateProblem = async (req: Request, res: Response) => {
         ? expectedMarkedBlocks.map(stripBlockMarkers)
         : [stripCaseDelimiters(rawExpected)];
 
-      const payload: PistonExecuteRequest = {
-        language,
-        version: "*",
-        files: [{ content: code }],
-        stdin: cleanInput,
-      };
+      let execResponse: Awaited<ReturnType<typeof executeCode>>;
+      try {
+        execResponse = await executeCode({
+          language,
+          version: "*",
+          files: [{ content: code }],
+          stdin: cleanInput,
+          run_timeout: 10000,
+          compile_timeout: 10000,
+        });
+      } catch (err: any) {
+        if (err?.context?.status === "COMPILE_ERROR") {
+          responses.push({
+            stdout: null,
+            stderr: err.context.stderr || null,
+            compile_output: err.context.stderr || null,
+            message: null,
+            status: { id: 6, description: "Compilation Error" },
+            time: "0",
+            memory: 0,
+            token: "",
+            stdin: cleanInput,
+            expected_output: expectedBlocks.join("\n"),
+          });
+          continue;
+        }
+        throw err;
+      }
 
-      const execution = await axios.post<PistonExecutionResult>(
-        pistonExecuteUrl,
-        payload,
-        {
-          headers: { "Content-Type": "application/json" },
-          timeout: 15000,
-        },
-      );
-
-      const result = execution.data;
-      const compile = result.compile;
-      const run = result.run;
-      const rawStdout = run.stdout || run.output || "";
+      const rawStdout = execResponse.stdout;
       const actualMarkedBlocks = expectedUsesMarkers
         ? extractMarkedBlocks(rawStdout).map(stripBlockMarkers)
         : [];
@@ -1018,28 +973,12 @@ export const validateProblem = async (req: Request, res: Response) => {
         ? actualMarkedBlocks.join("\n")
         : stripCaseDelimiters(rawStdout);
 
-      if (compile && compile.code !== 0) {
-        responses.push({
-          stdout: compile.stdout || null,
-          stderr: compile.stderr || null,
-          compile_output: compile.stderr || compile.output || null,
-          message: compile.signal || null,
-          status: { id: 6, description: "Compilation Error" },
-          time: "0",
-          memory: 0,
-          token: "",
-          stdin: cleanInput,
-          expected_output: expectedBlocks.join("\n"),
-        });
-        continue;
-      }
-
-      if (run.code !== 0) {
+      if (typeof execResponse.exitCode === "number" && execResponse.exitCode !== 0) {
         responses.push({
           stdout: stripCaseDelimiters(rawStdout) || null,
-          stderr: run.stderr || null,
+          stderr: execResponse.stderr || null,
           compile_output: null,
-          message: run.signal || null,
+          message: execResponse.signal || null,
           status: { id: 11, description: "Runtime Error" },
           time: "0",
           memory: 0,
@@ -1064,7 +1003,7 @@ export const validateProblem = async (req: Request, res: Response) => {
 
       responses.push({
         stdout: visibleStdout || null,
-        stderr: run.stderr || null,
+        stderr: execResponse.stderr || null,
         compile_output: null,
         message: null,
         status: {
