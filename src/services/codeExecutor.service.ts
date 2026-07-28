@@ -331,6 +331,7 @@ async function runCodeBatch(
   );
 
   if (response.data.compile?.stderr?.trim()) {
+    console.log(response.data.compile);
     throw new SubmissionExecutionError("Compilation failed", {
       status: "COMPILE_ERROR",
       stderr: response.data.compile.stderr,
@@ -359,13 +360,18 @@ export async function executeSubmission(
     `${driver?.header ?? ""}\n${submission.sourceCode}\n${driver?.footer ?? ""}`,
   );
 
-  const usesMarkers = testcases.some((tc) => hasMarkers(tc.expectedOutput ?? ""));
+  const usesMarkers = testcases.some((tc) =>
+    hasMarkers(tc.expectedOutput ?? ""),
+  );
 
   const cleanedCases = testcases.map((tc) => ({
     ...tc,
     input: stripCaseDelimiters(tc.input ?? ""),
     expectedOutput: usesMarkers
-      ? (tc.expectedOutput ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim()
+      ? (tc.expectedOutput ?? "")
+          .replace(/\r\n/g, "\n")
+          .replace(/\r/g, "\n")
+          .trim()
       : stripCaseDelimiters(tc.expectedOutput ?? ""),
   }));
 
