@@ -2044,6 +2044,81 @@ export const updateGroupDetails = async (
   }
 };
 
+export const deleteGroup = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { groupId } = req.body as { groupId?: string };
+
+    if (!groupId) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    const user = req.user;
+
+    if (!user) {
+      return res.status(403).json({ error: "Not Authorized" });
+    }
+
+    const groupData = await prisma.group.findUnique({
+      where: { id: groupId },
+    });
+
+    if (!groupData) {
+      return res.status(404).json({ error: "Group Not Found" });
+    }
+
+    if (
+      !(await canAccessGroupWithFallback(
+        user.id,
+        groupData.id,
+        groupData.creatorId,
+        PERMISSIONS.GROUP_DELETE,
+      ))
+    ) {
+      return res.status(403).json({ error: "Not Authorized" });
+    }
+
+    const callerMembership = await prisma.groupMember.findUnique({
+      where: {
+        groupId_userId: {
+          groupId,
+          userId: user.id,
+        },
+      },
+      select: {
+        roleId: true,
+      },
+    });
+
+    const isGroupOwner =
+      callerMembership?.roleId === GROUP_ROLE_IDS.OWNER ||
+      groupData.creatorId === user.id;
+
+    if (!isGroupOwner) {
+      return res.status(403).json({
+        error: "Only the group owner can delete the group",
+      });
+    }
+
+    await prisma.$transaction([
+      prisma.notification.updateMany({
+        where: { groupId },
+        data: { groupId: null },
+      }),
+      prisma.group.delete({
+        where: { id: groupId },
+      }),
+    ]);
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const addCoTeacherToGroup = async (
   req: Request,
   res: Response,

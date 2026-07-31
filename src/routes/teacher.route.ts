@@ -1,7 +1,7 @@
 import { Router } from "express";
 import teacherExamRouter from "@/routes/exam.teacher.route";
 import { isTeacher } from "@/middleware/isTeacher.middleware";
-import { addCoTeacherToGroup, addMemberToGroup, createGroup, getAllGroups, getGroupDetails, getGroupExams, getGroupMembers, removeMemberFromGroup, updateGroupDetails, getStudentGroups, getStudentGroupsStats } from "@/controllers/teacher.controllers";
+import { addCoTeacherToGroup, addMemberToGroup, createGroup, deleteGroup, getAllGroups, getGroupDetails, getGroupExams, getGroupMembers, removeMemberFromGroup, updateGroupDetails, getStudentGroups, getStudentGroupsStats } from "@/controllers/teacher.controllers";
 import {
 	getGroupOverallStats,
 	getGroupProblemStats,
@@ -100,6 +100,12 @@ router.post(
 	"/updategroupdetails",
 	requirePermission(PERMISSIONS.GROUP_EDIT, getGroupIdFromBody),
 	updateGroupDetails
+);
+
+router.post(
+	"/deletegroup",
+	requirePermission(PERMISSIONS.GROUP_DELETE, getGroupIdFromBody),
+	deleteGroup
 );
 
 router.get(
