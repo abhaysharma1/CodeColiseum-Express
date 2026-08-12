@@ -29,6 +29,7 @@ export const getMyLabs = async (
           include: { _count: { select: { problems: true } } },
           orderBy: [{ orderIndex: "asc" }, { weekNumber: "asc" }],
         },
+        creator: { select: { name: true } },
       },
       orderBy: { createdAt: "desc" },
     });
@@ -92,6 +93,7 @@ export const getMyLabs = async (
           id: lab.id,
           title: lab.title,
           description: lab.description,
+          creatorName: lab.creator.name,
           sebEnabled: lab.sebEnabled,
           modulesCount: visibleModules.length,
           modules: visibleModules,
