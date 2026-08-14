@@ -428,15 +428,20 @@ export async function getModuleStudentProgress(
   sortBy: StudentProgressSortBy = "name",
   sortOrder: SortOrder = "asc",
 ): Promise<StudentProgressListResponse> {
-  const totalProblems = await prisma.moduleProblem.count({
-    where: { moduleId },
-  });
+  const [totalProblems, moduleProblems] = await Promise.all([
+    prisma.moduleProblem.count({ where: { moduleId } }),
+    prisma.moduleProblem.findMany({
+      where: { moduleId },
+      select: { problemId: true },
+    }),
+  ]);
   if (totalProblems === 0) {
     return {
       data: [],
       pagination: { take, skip, total: 0, pages: 0 },
     };
   }
+  const problemIds = moduleProblems.map((mp) => mp.problemId);
 
   // Resolve the student universe (id + name).
   let students: { id: string; name: string }[];
@@ -449,14 +454,25 @@ export async function getModuleStudentProgress(
       .map((m: any) => m.user)
       .filter((u: any): u is { id: string; name: string } => !!u?.name);
   } else {
-    const progressUsers = await prisma.moduleProblemProgress.findMany({
-      where: { moduleProblem: { moduleId } },
-      distinct: ["userId"],
-      select: { user: { select: { id: true, name: true } } },
-    });
-    students = progressUsers
-      .map((p: any) => p.user)
-      .filter((u: any): u is { id: string; name: string } => !!u?.name);
+    const [progressUsers, submissionUsers] = await Promise.all([
+      prisma.moduleProblemProgress.findMany({
+        where: { moduleProblem: { moduleId } },
+        distinct: ["userId"],
+        select: { user: { select: { id: true, name: true } } },
+      }),
+      prisma.selfSubmission.findMany({
+        where: { problemId: { in: problemIds } },
+        distinct: ["userId"],
+        select: { user: { select: { id: true, name: true } } },
+      }),
+    ]);
+    const byId = new Map<string, { id: string; name: string }>();
+    for (const p of [...progressUsers, ...submissionUsers] as any[]) {
+      if (p.user?.name && !byId.has(p.user.id)) {
+        byId.set(p.user.id, { id: p.user.id, name: p.user.name });
+      }
+    }
+    students = Array.from(byId.values());
   }
 
   // Case-insensitive name search.
@@ -468,8 +484,9 @@ export async function getModuleStudentProgress(
   const total = students.length;
   const pages = take > 0 ? Math.ceil(total / take) : 0;
 
-  // Solved counts are needed for the page; when sorting by a count column they
-  // must cover the whole filtered set so ordering is consistent.
+  // Solved counts = distinct ACCEPTED submissions per (user, problem) — the
+  // ground truth. ModuleProblemProgress lags it (interrupted polls, practice
+  // submissions), so it must not drive the displayed numbers.
   const needsCountsForSort =
     sortBy === "solvedProblems" || sortBy === "completionPercentage";
   const countUserIds = needsCountsForSort
@@ -478,17 +495,17 @@ export async function getModuleStudentProgress(
 
   const solvedMap = new Map<string, number>();
   if (countUserIds.length > 0) {
-    const counts = await prisma.moduleProblemProgress.groupBy({
-      by: ["userId"],
+    const accepted = await prisma.selfSubmission.findMany({
       where: {
-        moduleProblem: { moduleId },
+        problemId: { in: problemIds },
+        status: "ACCEPTED",
         userId: { in: countUserIds },
-        isSolved: true,
       },
-      _count: { _all: true },
+      select: { userId: true, problemId: true },
+      distinct: ["userId", "problemId"],
     });
-    for (const c of counts) {
-      solvedMap.set(c.userId, c._count._all);
+    for (const a of accepted) {
+      solvedMap.set(a.userId, (solvedMap.get(a.userId) ?? 0) + 1);
     }
   }
 
@@ -571,31 +588,13 @@ export async function getStudentModuleAttempts(
     orderBy: { orderIndex: "asc" },
   });
 
-  const progressRows = await prisma.moduleProblemProgress.findMany({
-    where: { userId: studentId, moduleProblem: { moduleId } },
-    select: {
-      moduleProblemId: true,
-      attemptCount: true,
-      isSolved: true,
-      solvedAt: true,
-      lastAttemptAt: true,
-      bestSubmissionId: true,
-    },
-  });
-
-  const progressByMp = new Map(
-    progressRows.map((p) => [p.moduleProblemId, p]),
-  );
-
-  const bestIds = progressRows
-    .map((p) => p.bestSubmissionId)
-    .filter((id): id is string => !!id);
-
-  const bestSubs = bestIds.length
+  const problemIds = moduleProblems.map((mp) => mp.problem.id);
+  const submissions = problemIds.length
     ? await prisma.selfSubmission.findMany({
-        where: { id: { in: bestIds } },
+        where: { userId: studentId, problemId: { in: problemIds } },
         select: {
           id: true,
+          problemId: true,
           status: true,
           passedTestcases: true,
           totalTestcases: true,
@@ -604,26 +603,43 @@ export async function getStudentModuleAttempts(
           memory: true,
           createdAt: true,
         },
+        orderBy: { createdAt: "asc" },
       })
     : [];
 
-  const bestMap = new Map(bestSubs.map((s) => [s.id, s]));
+  // Terminal submissions grouped per problem. PENDING/RUNNING rows are
+  // in-flight and are not counted as completed attempts.
+  const byProblem = new Map<string, (typeof submissions)[number][]>();
+  for (const s of submissions) {
+    if (s.status === "PENDING" || s.status === "RUNNING") continue;
+    const arr = byProblem.get(s.problemId) ?? [];
+    arr.push(s);
+    byProblem.set(s.problemId, arr);
+  }
 
   const problems = moduleProblems.map((mp: any) => {
-    const progress = progressByMp.get(mp.id);
-    const best = progress?.bestSubmissionId
-      ? bestMap.get(progress.bestSubmissionId)
-      : undefined;
+    const rows = byProblem.get(mp.problem.id) ?? [];
+    const accepted = rows.filter((s) => s.status === "ACCEPTED");
+    const best =
+      accepted.length > 0
+        ? accepted.reduce((a, b) =>
+            b.passedTestcases > a.passedTestcases ||
+            (b.passedTestcases === a.passedTestcases &&
+              b.createdAt < a.createdAt)
+              ? b
+              : a,
+          )
+        : rows[rows.length - 1];
     return {
       moduleProblemId: mp.id,
       problemId: mp.problem.id,
       problemNumber: mp.problem.number,
       problemTitle: mp.problem.title,
       difficulty: mp.problem.difficulty,
-      attemptCount: progress?.attemptCount ?? 0,
-      isSolved: progress?.isSolved ?? false,
-      solvedAt: progress?.solvedAt ?? null,
-      lastAttemptAt: progress?.lastAttemptAt ?? null,
+      attemptCount: rows.length,
+      isSolved: accepted.length > 0,
+      solvedAt: accepted.length > 0 ? accepted[0].createdAt : null,
+      lastAttemptAt: rows.length > 0 ? rows[rows.length - 1].createdAt : null,
       bestSubmission: best
         ? {
             id: best.id,
@@ -648,7 +664,7 @@ export async function getStudentModuleAttempts(
     studentId,
     studentName: student?.name ?? "Unknown",
     totalProblems: moduleProblems.length,
-    solvedProblems: progressRows.filter((p) => p.isSolved).length,
+    solvedProblems: problems.filter((p) => p.isSolved).length,
     problems,
   };
 }
@@ -674,7 +690,11 @@ export async function getStudentProblemSubmissions(
   }
 
   const submissions = await prisma.selfSubmission.findMany({
-    where: { userId: studentId, problemId: mp.problem.id },
+    where: {
+      userId: studentId,
+      problemId: mp.problem.id,
+      status: { notIn: ["PENDING", "RUNNING"] },
+    },
     select: {
       id: true,
       status: true,
