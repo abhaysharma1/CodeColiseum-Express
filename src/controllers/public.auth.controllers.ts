@@ -85,3 +85,61 @@ export const publicSignup = async (
     next(error);
   }
 };
+
+const requestPasswordResetSchema = z.object({
+  email: z.string().trim().email("Invalid email address"),
+});
+
+export const requestPasswordReset = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const validation = requestPasswordResetSchema.safeParse(req.body);
+
+    if (!validation.success) {
+      return res.status(400).json({
+        error: "Validation Error",
+        details: validation.error.flatten(),
+      });
+    }
+
+    const normalizedEmail = validation.data.email.toLowerCase();
+
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+      select: { id: true },
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        error: "No account found with this email address",
+      });
+    }
+
+    try {
+      await auth.api.requestPasswordReset({
+        body: {
+          email: normalizedEmail,
+        },
+        headers: new Headers(),
+      });
+    } catch (error: any) {
+      console.log(error);
+      const message =
+        error?.body?.message ?? error?.message ?? "Failed to send reset email";
+      return res.status(500).json({
+        error: "Failed to send reset email",
+        message,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Password reset email sent",
+    });
+  } catch (error) {
+    next(error);
+  }
+};

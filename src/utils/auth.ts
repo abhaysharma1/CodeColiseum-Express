@@ -6,76 +6,88 @@ import transporter from "./nodemailer";
 
 const isDev = process.env.NODE_ENV === "development";
 
-const resetPasswordEmailHtml = (
-  user: { name?: string },
-  url: string,
-) => `<!doctype html>
+const resetPasswordEmailHtml = (user: { name?: string }, url: string) =>
+  `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width" />
   <title>Reset your password</title>
   <style>
-    body { margin:0; padding:0; background:#f6f8fb; font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
-    .container { width:100%; max-width:600px; margin:28px auto; background:#ffffff; border-radius:12px; box-shadow:0 6px 18px rgba(19,24,31,0.08); overflow:hidden; }
-    .header { padding:20px 24px; display:flex; align-items:center; gap:12px; border-bottom:1px solid #eef2f6; }
-    .logo { width:40px; height:40px; border-radius:6px; background:#0b69ff; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:16px; }
-    .body { padding:28px 24px; color:#111827; line-height:1.45; }
-    .h1 { margin:0 0 8px 0; font-size:20px; font-weight:700; color:#0f172a; }
-    .p { margin:0 0 18px 0; color:#374151; font-size:15px; }
-    .btn { display:inline-block; padding:12px 20px; border-radius:8px; text-decoration:none; font-weight:600; background:#0b69ff; color:#fff; }
-    .muted { color:#6b7280; font-size:13px; margin-top:20px; }
-    .footer { padding:16px 24px; font-size:12px; color:#9ca3af; text-align:center; background:#fafafa; }
-    @media (max-width:420px){ .body{padding:20px 16px} .header{padding:16px} }
+    body { margin:0; padding:0; background:#0e1420; font-family: 'Courier New', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .wrap { width:100%; padding:32px 16px; }
+    .container { width:100%; max-width:560px; margin:0 auto; background:#ffffff; border-radius:2px; overflow:hidden; }
+    .header { background:#0e1420; padding:28px 28px 24px; text-align:left; border-bottom:3px solid #c15b4a; }
+    .eyebrow { color:#c15b4a; font-size:11px; letter-spacing:3px; text-transform:uppercase; margin:0 0 6px; font-weight:700; }
+    .wordmark { color:#f5f2ea; font-size:24px; font-weight:700; letter-spacing:1px; margin:0; font-family: Georgia, 'Times New Roman', serif; }
+    .wordmark span { color:#c15b4a; }
+    .tagline { color:#7d8aa3; font-size:12px; margin:6px 0 0; letter-spacing:0.5px; }
+    .body { padding:32px 28px 8px; color:#1b2333; font-family: Georgia, 'Times New Roman', serif; }
+    .greeting { font-size:19px; font-weight:700; margin:0 0 14px; color:#0e1420; }
+    .p { margin:0 0 20px; color:#3d4759; font-size:15px; line-height:1.6; font-family: Arial, Helvetica, sans-serif; }
+    .cta-wrap { text-align:center; padding: 4px 28px 28px; }
+    .btn { display:inline-block; padding:14px 36px; background:#0e1420; color:#f5f2ea !important; text-decoration:none; font-family: Arial, Helvetica, sans-serif; font-size:13px; font-weight:700; letter-spacing: 2px; text-transform: uppercase; border-radius:2px; border-bottom: 3px solid #c15b4a; }
+    .link-wrap { padding: 0 28px 8px; }
+    .link-box { background: #faf5f3; border: 1px solid #ecd8d3; border-radius: 6px; padding: 14px 16px; }
+    .link-label { font-family: Arial, Helvetica, sans-serif; font-size: 10px; letter-spacing: 2px; color: #a3644f; text-transform: uppercase; font-weight: 700; margin: 0 0 6px; }
+    .link-value { font-family: 'Courier New', ui-monospace, monospace; font-size: 12.5px; color: #17202f; word-break: break-all; margin: 0; }
+    .expiry { font-family: Arial, Helvetica, sans-serif; font-size: 12.5px; color: #a3644f; background: #faf5f3; border-left: 3px solid #c15b4a; padding: 10px 14px; margin: 20px 28px 8px; line-height:1.5; }
+    .muted { font-family: Arial, Helvetica, sans-serif; font-size:12.5px; color:#8a93a6; margin: 20px 28px 28px; line-height:1.5; }
+    .divider { height:1px; background:#e8e4d8; margin: 0 28px; }
+    .footer { padding:20px 28px; font-family: Arial, Helvetica, sans-serif; font-size:11px; color:#7d8aa3; text-align:center; background:#f7f5f0; letter-spacing:0.5px; }
+    @media (max-width:480px){
+      .header, .body, .cta-wrap, .link-wrap { padding-left:20px; padding-right:20px; }
+      .muted, .expiry { margin-left:20px; margin-right:20px; }
+      .divider { margin-left:20px; margin-right:20px; }
+    }
   </style>
 </head>
 <body>
   <div style="display:none; max-height:0; overflow:hidden; font-size:1px; color:#fff; line-height:1px; max-width:0;">
-    Reset your CodeColiseum password — tap the button inside.
+    Reset your CodeColiseum password — this link expires in 1 hour.
   </div>
 
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:transparent;">
-    <tr>
-      <td align="center">
-        <div class="container" role="article" aria-label="Password reset">
+  <div class="wrap">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px; margin:0 auto; background:#ffffff; border-radius:2px; overflow:hidden;">
+      <tr>
+        <td>
+
           <div class="header" role="banner">
-            <div class="logo" aria-hidden="true">CC</div>
-            <div>
-              <div style="font-weight:700; font-size:14px; color:#0f172a;">CodeColiseum</div>
-              <div style="font-size:12px; color:#6b7280;">Reset your password</div>
-            </div>
+            <p class="eyebrow">Security Checkpoint</p>
+            <p class="wordmark">CODE<span>COLISEUM</span></p>
+            <p class="tagline">VERIFY · RESET · SECURE</p>
           </div>
 
           <div class="body">
-            <h1 class="h1">Hi ${user.name ?? "there"},</h1>
-
-            <p class="p">
-              We received a request to reset the password for your <strong>CodeColiseum</strong> account.
-              Click the button below to choose a new one.
-            </p>
-
-            <p style="text-align:center; margin:22px 0;">
-              <a href=${url} class="btn" target="_blank" rel="noopener">Reset my password</a>
-            </p>
-
-            <p class="p">
-              If the button doesn't work, copy and paste the following link into your browser:
-              <br />
-              <a href=${url} target="_blank" rel="noopener" style="color:#0b69ff; word-break:break-all;">${url}</a>
-            </p>
-
-            <p class="muted">
-              This link will expire in 1 hour. If you didn't request a password reset, you can safely ignore this email.
-            </p>
+            <p class="greeting">Hi ${user.name ?? "there"},</p>
+            <p class="p">We received a request to reset the password on your CodeColiseum account. Click below to choose a new one.</p>
           </div>
+
+          <div class="cta-wrap">
+            <a href=${url} class="btn" target="_blank" rel="noopener">Reset Password</a>
+          </div>
+
+          <div class="link-wrap">
+            <div class="link-box">
+              <p class="link-label">Or paste this link into your browser</p>
+              <p class="link-value">${url}</p>
+            </div>
+          </div>
+
+          <div class="expiry">
+            This link expires in <strong>1 hour</strong>. If you didn't request this, no action is needed — your password won't change.
+          </div>
+
+          <div class="divider"></div>
 
           <div class="footer">
-            © 2025 CodeColiseum — <span style="color:#6b7280">Sharpen your skills. Compete. Learn.</span>
+            &copy; 2026 CodeColiseum — Sharpen your skills. Compete. Learn.
           </div>
-        </div>
-      </td>
-    </tr>
-  </table>
+
+        </td>
+      </tr>
+    </table>
+  </div>
 </body>
 </html>`;
 
@@ -128,88 +140,5 @@ export const auth = betterAuth({
       },
     },
   },
-  // emailVerification: {
-  //   sendVerificationEmail: async ({ user, url, token }, request) => {
-  //     await transporter.sendMail({
-  //       from: "abhaysharma.mrt@gmail.com",
-  //       to: user.email,
-  //       subject: "Verify your email address",
-  //       text: `Click the link to verify your email: ${url}`, // plain‑text body
-  //       html: `<!-- Email verification HTML snippet for CodeColiseum -->
-  //         <!doctype html>
-  //         <html lang="en">
-  //         <head>
-  //           <meta charset="utf-8" />
-  //           <meta name="viewport" content="width=device-width" />
-  //           <title>Verify your email</title>
-  //           <style>
-  //             /* Inline-friendly, minimal styles */
-  //             body { margin:0; padding:0; background:#f6f8fb; font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
-  //             .container { width:100%; max-width:600px; margin:28px auto; background:#ffffff; border-radius:12px; box-shadow:0 6px 18px rgba(19,24,31,0.08); overflow:hidden; }
-  //             .header { padding:20px 24px; display:flex; align-items:center; gap:12px; border-bottom:1px solid #eef2f6; }
-  //             .logo { width:40px; height:40px; border-radius:6px; background:#0b69ff; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:16px; }
-  //             .body { padding:28px 24px; color:#111827; line-height:1.45; }
-  //             .h1 { margin:0 0 8px 0; font-size:20px; font-weight:700; color:#0f172a; }
-  //             .p { margin:0 0 18px 0; color:#374151; font-size:15px; }
-  //             .btn { display:inline-block; padding:12px 20px; border-radius:8px; text-decoration:none; font-weight:600; background:#0b69ff; color:#fff; }
-  //             .muted { color:#6b7280; font-size:13px; margin-top:20px; }
-  //             .footer { padding:16px 24px; font-size:12px; color:#9ca3af; text-align:center; background:#fafafa; }
-  //             @media (max-width:420px){ .body{padding:20px 16px} .header{padding:16px} }
-  //           </style>
-  //         </head>
-  //         <body>
-  //           <!-- preheader (hidden but visible in some inbox previews) -->
-  //           <div style="display:none; max-height:0; overflow:hidden; font-size:1px; color:#fff; line-height:1px; max-width:0;">
-  //             Verify your CodeColiseum account to get started — tap the button inside.
-  //           </div>
-
-  //           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:transparent;">
-  //             <tr>
-  //               <td align="center">
-  //                 <div class="container" role="article" aria-label="Email verification">
-  //                   <div class="header" role="banner">
-  //                     <div class="logo" aria-hidden="true">CC</div>
-  //                     <div>
-  //                       <div style="font-weight:700; font-size:14px; color:#0f172a;">CodeColiseum</div>
-  //                       <div style="font-size:12px; color:#6b7280;">Verify your email</div>
-  //                     </div>
-  //                   </div>
-
-  //                   <div class="body">
-  //                     <h1 class="h1">Hi ${user.name},</h1>
-
-  //                     <p class="p">
-  //                       Thanks for signing up to <strong>CodeColiseum</strong> — your place for coding challenges and live contests.
-  //                       Please confirm your email address so we can activate your account.
-  //                     </p>
-
-  //                     <p style="text-align:center; margin:22px 0;">
-  //                       <a href=${url} class="btn" target="_blank" rel="noopener">Verify my email</a>
-  //                     </p>
-
-  //                     <p class="p">
-  //                       If the button doesn't work, copy and paste the following link into your browser:
-  //                       <br />
-  //                       <a href=${url} target="_blank" rel="noopener" style="color:#0b69ff; word-break:break-all;">${url}</a>
-  //                     </p>
-
-  //                     <p class="muted">
-  //                       This link will expire in 24 hours. If you didn't create an account with CodeColiseum, you can safely ignore this email.
-  //                     </p>
-  //                   </div>
-
-  //                   <div class="footer">
-  //                     © 2025 CodeColiseum — <span style="color:#6b7280">Sharpen your skills. Compete. Learn.</span>
-  //                   </div>
-  //                 </div>
-  //               </td>
-  //             </tr>
-  //           </table>
-  //         </body>
-  //         </html>
-  //       `, // HTML body
-  //     });
-  //   },
-  // },
   trustedOrigins: [process.env.FRONTEND_URL!], // Explicitly allow localhost for development
 });
