@@ -85,6 +85,70 @@ export interface StudentProgressEntry {
   completionPercentage: number;
 }
 
+export interface PaginationMeta {
+  take: number;
+  skip: number;
+  total: number;
+  pages: number;
+}
+
+export interface StudentProgressListResponse {
+  data: StudentProgressEntry[];
+  pagination: PaginationMeta;
+}
+
+export type StudentProgressSortBy =
+  | "name"
+  | "solvedProblems"
+  | "completionPercentage";
+
+export type SortOrder = "asc" | "desc";
+
+export interface SubmissionSummary {
+  id: string;
+  status: string;
+  passedTestcases: number;
+  totalTestcases: number;
+  language: string;
+  executionTime: number | null;
+  memory: number | null;
+  createdAt: Date;
+}
+
+export interface StudentModuleAttemptProblem {
+  moduleProblemId: string;
+  problemId: string;
+  problemNumber: number;
+  problemTitle: string;
+  difficulty: string;
+  attemptCount: number;
+  isSolved: boolean;
+  solvedAt: Date | null;
+  lastAttemptAt: Date | null;
+  bestSubmission: SubmissionSummary | null;
+}
+
+export interface StudentModuleAttemptsResponse {
+  studentId: string;
+  studentName: string;
+  totalProblems: number;
+  solvedProblems: number;
+  problems: StudentModuleAttemptProblem[];
+}
+
+export interface StudentProblemSubmission extends SubmissionSummary {
+  sourceCode: string;
+  stderr: string | null;
+}
+
+export interface StudentProblemSubmissionsResponse {
+  problemId: string;
+  problemNumber: number;
+  problemTitle: string;
+  total: number;
+  submissions: StudentProblemSubmission[];
+}
+
 export interface ProblemAnalyticsEntry {
   problemId: string;
   problemNumber: number;

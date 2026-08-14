@@ -5,7 +5,11 @@ import type {
   AssessmentResultsDTO,
   ModuleStatus,
   ProblemAnalyticsEntry,
-  StudentProgressEntry,
+  SortOrder,
+  StudentModuleAttemptsResponse,
+  StudentProblemSubmissionsResponse,
+  StudentProgressListResponse,
+  StudentProgressSortBy,
 } from "@/types/lab.types";
 
 export async function getLabAssignments(labId: string) {
@@ -418,57 +422,292 @@ export async function getModuleProblemAnalytics(
 export async function getModuleStudentProgress(
   moduleId: string,
   groupId?: string,
-): Promise<StudentProgressEntry[]> {
+  take = 20,
+  skip = 0,
+  search = "",
+  sortBy: StudentProgressSortBy = "name",
+  sortOrder: SortOrder = "asc",
+): Promise<StudentProgressListResponse> {
   const totalProblems = await prisma.moduleProblem.count({
     where: { moduleId },
   });
-  if (totalProblems === 0) return [];
+  if (totalProblems === 0) {
+    return {
+      data: [],
+      pagination: { take, skip, total: 0, pages: 0 },
+    };
+  }
 
-  let userIds: string[] | undefined;
+  // Resolve the student universe (id + name).
+  let students: { id: string; name: string }[];
   if (groupId) {
     const members = await prisma.groupMember.findMany({
       where: { groupId },
-      select: { userId: true },
+      select: { user: { select: { id: true, name: true } } },
     });
-    userIds = members.map((m: { userId: string }) => m.userId);
+    students = members
+      .map((m: any) => m.user)
+      .filter((u: any): u is { id: string; name: string } => !!u?.name);
+  } else {
+    const progressUsers = await prisma.moduleProblemProgress.findMany({
+      where: { moduleProblem: { moduleId } },
+      distinct: ["userId"],
+      select: { user: { select: { id: true, name: true } } },
+    });
+    students = progressUsers
+      .map((p: any) => p.user)
+      .filter((u: any): u is { id: string; name: string } => !!u?.name);
   }
 
-  const progress = await prisma.moduleProblemProgress.findMany({
-    where: {
-      moduleProblem: {
-        moduleId,
+  // Case-insensitive name search.
+  const q = search.trim().toLowerCase();
+  if (q) {
+    students = students.filter((s) => s.name.toLowerCase().includes(q));
+  }
+
+  const total = students.length;
+  const pages = take > 0 ? Math.ceil(total / take) : 0;
+
+  // Solved counts are needed for the page; when sorting by a count column they
+  // must cover the whole filtered set so ordering is consistent.
+  const needsCountsForSort =
+    sortBy === "solvedProblems" || sortBy === "completionPercentage";
+  const countUserIds = needsCountsForSort
+    ? students.map((s) => s.id)
+    : students.slice(skip, skip + take).map((s) => s.id);
+
+  const solvedMap = new Map<string, number>();
+  if (countUserIds.length > 0) {
+    const counts = await prisma.moduleProblemProgress.groupBy({
+      by: ["userId"],
+      where: {
+        moduleProblem: { moduleId },
+        userId: { in: countUserIds },
+        isSolved: true,
       },
-      ...(userIds ? { userId: { in: userIds } } : {}),
-    },
-    select: {
-      userId: true,
-      isSolved: true,
-      user: {
-        select: {
-          id: true,
-          name: true,
+      _count: { _all: true },
+    });
+    for (const c of counts) {
+      solvedMap.set(c.userId, c._count._all);
+    }
+  }
+
+  if (sortBy === "name") {
+    students.sort((a, b) =>
+      sortOrder === "asc"
+        ? a.name.localeCompare(b.name)
+        : b.name.localeCompare(a.name),
+    );
+  } else {
+    students.sort((a, b) => {
+      const aSolved = solvedMap.get(a.id) ?? 0;
+      const bSolved = solvedMap.get(b.id) ?? 0;
+      const cmp = sortOrder === "asc" ? aSolved - bSolved : bSolved - aSolved;
+      return cmp === 0 ? a.name.localeCompare(b.name) : cmp;
+    });
+  }
+
+  const pageStudents = students.slice(skip, skip + take);
+
+  const data = pageStudents.map((s) => {
+    const solved = solvedMap.get(s.id) ?? 0;
+    return {
+      studentId: s.id,
+      studentName: s.name,
+      solvedProblems: solved,
+      totalProblems,
+      completionPercentage: Math.round((solved / totalProblems) * 100),
+    };
+  });
+
+  return { data, pagination: { take, skip, total, pages } };
+}
+
+async function ensureStudentInModule(studentId: string, moduleId: string) {
+  const [hasProgress, lab] = await Promise.all([
+    prisma.moduleProblemProgress.findFirst({
+      where: { userId: studentId, moduleProblem: { moduleId } },
+      select: { id: true },
+    }),
+    prisma.labModule.findUnique({
+      where: { id: moduleId },
+      select: {
+        lab: {
+          select: { assignments: { select: { groupId: true } } },
         },
       },
-    },
-  });
-  
-  const studentMap = new Map<string, { name: string; solved: number }>();
-  for (const p of progress) {
-    if (!studentMap.has(p.userId)) {
-      studentMap.set(p.userId, { name: p.user.name, solved: 0 });
-    }
-    if (p.isSolved) {
-      studentMap.get(p.userId)!.solved++;
-    }
+    }),
+  ]);
+
+  if (hasProgress) return;
+
+  const groupIds = lab?.lab.assignments.map((a) => a.groupId) ?? [];
+  if (groupIds.length > 0) {
+    const member = await prisma.groupMember.findFirst({
+      where: { userId: studentId, groupId: { in: groupIds } },
+      select: { id: true },
+    });
+    if (member) return;
   }
 
-  return Array.from(studentMap.entries()).map(([studentId, data]) => ({
+  const err = new Error("Student is not part of this module");
+  (err as any).status = 404;
+  throw err;
+}
+
+export async function getStudentModuleAttempts(
+  studentId: string,
+  moduleId: string,
+): Promise<StudentModuleAttemptsResponse> {
+  await ensureStudentInModule(studentId, moduleId);
+
+  const moduleProblems = await prisma.moduleProblem.findMany({
+    where: { moduleId },
+    include: {
+      problem: {
+        select: { id: true, number: true, title: true, difficulty: true },
+      },
+    },
+    orderBy: { orderIndex: "asc" },
+  });
+
+  const progressRows = await prisma.moduleProblemProgress.findMany({
+    where: { userId: studentId, moduleProblem: { moduleId } },
+    select: {
+      moduleProblemId: true,
+      attemptCount: true,
+      isSolved: true,
+      solvedAt: true,
+      lastAttemptAt: true,
+      bestSubmissionId: true,
+    },
+  });
+
+  const progressByMp = new Map(
+    progressRows.map((p) => [p.moduleProblemId, p]),
+  );
+
+  const bestIds = progressRows
+    .map((p) => p.bestSubmissionId)
+    .filter((id): id is string => !!id);
+
+  const bestSubs = bestIds.length
+    ? await prisma.selfSubmission.findMany({
+        where: { id: { in: bestIds } },
+        select: {
+          id: true,
+          status: true,
+          passedTestcases: true,
+          totalTestcases: true,
+          language: true,
+          executionTime: true,
+          memory: true,
+          createdAt: true,
+        },
+      })
+    : [];
+
+  const bestMap = new Map(bestSubs.map((s) => [s.id, s]));
+
+  const problems = moduleProblems.map((mp: any) => {
+    const progress = progressByMp.get(mp.id);
+    const best = progress?.bestSubmissionId
+      ? bestMap.get(progress.bestSubmissionId)
+      : undefined;
+    return {
+      moduleProblemId: mp.id,
+      problemId: mp.problem.id,
+      problemNumber: mp.problem.number,
+      problemTitle: mp.problem.title,
+      difficulty: mp.problem.difficulty,
+      attemptCount: progress?.attemptCount ?? 0,
+      isSolved: progress?.isSolved ?? false,
+      solvedAt: progress?.solvedAt ?? null,
+      lastAttemptAt: progress?.lastAttemptAt ?? null,
+      bestSubmission: best
+        ? {
+            id: best.id,
+            status: best.status,
+            passedTestcases: best.passedTestcases,
+            totalTestcases: best.totalTestcases,
+            language: best.language,
+            executionTime: best.executionTime,
+            memory: best.memory,
+            createdAt: best.createdAt,
+          }
+        : null,
+    };
+  });
+
+  const student = await prisma.user.findUnique({
+    where: { id: studentId },
+    select: { name: true },
+  });
+
+  return {
     studentId,
-    studentName: data.name,
-    solvedProblems: data.solved,
-    totalProblems,
-    completionPercentage: Math.round((data.solved / totalProblems) * 100),
-  }));
+    studentName: student?.name ?? "Unknown",
+    totalProblems: moduleProblems.length,
+    solvedProblems: progressRows.filter((p) => p.isSolved).length,
+    problems,
+  };
+}
+
+export async function getStudentProblemSubmissions(
+  studentId: string,
+  moduleId: string,
+  moduleProblemId: string,
+): Promise<StudentProblemSubmissionsResponse> {
+  await ensureStudentInModule(studentId, moduleId);
+
+  const mp = await prisma.moduleProblem.findUnique({
+    where: { id: moduleProblemId },
+    include: {
+      module: { select: { id: true } },
+      problem: { select: { id: true, number: true, title: true } },
+    },
+  });
+  if (!mp || mp.module.id !== moduleId) {
+    const err = new Error("Problem not found in this module");
+    (err as any).status = 404;
+    throw err;
+  }
+
+  const submissions = await prisma.selfSubmission.findMany({
+    where: { userId: studentId, problemId: mp.problem.id },
+    select: {
+      id: true,
+      status: true,
+      passedTestcases: true,
+      totalTestcases: true,
+      language: true,
+      executionTime: true,
+      memory: true,
+      createdAt: true,
+      sourceCode: true,
+      stderr: true,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return {
+    problemId: mp.problem.id,
+    problemNumber: mp.problem.number,
+    problemTitle: mp.problem.title,
+    total: submissions.length,
+    submissions: submissions.map((s: any) => ({
+      id: s.id,
+      status: s.status,
+      passedTestcases: s.passedTestcases,
+      totalTestcases: s.totalTestcases,
+      language: s.language,
+      executionTime: s.executionTime,
+      memory: s.memory,
+      createdAt: s.createdAt,
+      sourceCode: s.sourceCode,
+      stderr: s.stderr,
+    })),
+  };
 }
 
 export async function getAssessmentResults(

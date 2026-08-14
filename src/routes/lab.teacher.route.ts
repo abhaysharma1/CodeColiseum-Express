@@ -54,6 +54,8 @@ router.get("/modules/:moduleId/assessment", requirePermission(PERMISSIONS.LAB_VI
 // Analytics
 router.get("/modules/:moduleId/assessment-results", requirePermission(PERMISSIONS.ANALYTICS_VIEW), labController.getAssessmentResults);
 router.get("/modules/:moduleId/student-progress", requirePermission(PERMISSIONS.ANALYTICS_VIEW), labController.getModuleStudentProgress);
+router.get("/modules/:moduleId/student-attempts/:studentId", requirePermission(PERMISSIONS.ANALYTICS_VIEW), labController.getModuleStudentAttempts);
+router.get("/modules/:moduleId/student-attempts/:studentId/problems/:moduleProblemId/submissions", requirePermission(PERMISSIONS.ANALYTICS_VIEW), labController.getModuleStudentProblemSubmissions);
 router.get("/modules/:moduleId/problem-analytics", requirePermission(PERMISSIONS.ANALYTICS_VIEW), labController.getModuleProblemAnalytics);
 
 router.get("/modules/:moduleId/export-excel", requirePermission(PERMISSIONS.ANALYTICS_VIEW), labController.exportModuleAnalytics);

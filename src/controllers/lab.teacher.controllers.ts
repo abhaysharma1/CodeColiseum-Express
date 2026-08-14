@@ -24,6 +24,8 @@ import {
   getLabAssignments as getLabAssignmentsService,
   getModuleProblemAnalytics as getModuleProblemAnalyticsService,
   getModuleStudentProgress as getModuleStudentProgressService,
+  getStudentModuleAttempts as getStudentModuleAttemptsService,
+  getStudentProblemSubmissions as getStudentProblemSubmissionsService,
   getAssessmentResults as getAssessmentResultsService,
   addLabTeacher as addLabTeacherService,
   removeLabTeacher as removeLabTeacherService,
@@ -842,11 +844,67 @@ export const getModuleStudentProgress = async (
     const user = req.user!;
     const moduleId = req.params.moduleId as string;
     const groupId = req.query.groupId as string | undefined;
+    const take = Math.min(Math.max(Number(req.query.take) || 20, 1), 100);
+    const skip = Math.max(Number(req.query.skip) || 0, 0);
+    const search = (req.query.search as string) || "";
+    const sortBy = (req.query.sortBy as string) || "name";
+    const sortOrder = (req.query.sortOrder as string) === "desc" ? "desc" : "asc";
     await getTeacherModuleOrThrow(user.id, moduleId);
 
-    const progress = await getModuleStudentProgressService(moduleId, groupId);
+    const progress = await getModuleStudentProgressService(
+      moduleId,
+      groupId,
+      take,
+      skip,
+      search,
+      sortBy as any,
+      sortOrder as any,
+    );
 
     res.status(200).json(progress);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getModuleStudentAttempts = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const user = req.user!;
+    const moduleId = req.params.moduleId as string;
+    const studentId = req.params.studentId as string;
+    await getTeacherModuleOrThrow(user.id, moduleId);
+
+    const attempts = await getStudentModuleAttemptsService(studentId, moduleId);
+
+    res.status(200).json(attempts);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getModuleStudentProblemSubmissions = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const user = req.user!;
+    const moduleId = req.params.moduleId as string;
+    const studentId = req.params.studentId as string;
+    const moduleProblemId = req.params.moduleProblemId as string;
+    await getTeacherModuleOrThrow(user.id, moduleId);
+
+    const submissions = await getStudentProblemSubmissionsService(
+      studentId,
+      moduleId,
+      moduleProblemId,
+    );
+
+    res.status(200).json(submissions);
   } catch (error) {
     next(error);
   }
