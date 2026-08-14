@@ -2,8 +2,82 @@ import "dotenv/config";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import prisma from "./prisma";
+import transporter from "./nodemailer";
 
 const isDev = process.env.NODE_ENV === "development";
+
+const resetPasswordEmailHtml = (
+  user: { name?: string },
+  url: string,
+) => `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width" />
+  <title>Reset your password</title>
+  <style>
+    body { margin:0; padding:0; background:#f6f8fb; font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
+    .container { width:100%; max-width:600px; margin:28px auto; background:#ffffff; border-radius:12px; box-shadow:0 6px 18px rgba(19,24,31,0.08); overflow:hidden; }
+    .header { padding:20px 24px; display:flex; align-items:center; gap:12px; border-bottom:1px solid #eef2f6; }
+    .logo { width:40px; height:40px; border-radius:6px; background:#0b69ff; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:16px; }
+    .body { padding:28px 24px; color:#111827; line-height:1.45; }
+    .h1 { margin:0 0 8px 0; font-size:20px; font-weight:700; color:#0f172a; }
+    .p { margin:0 0 18px 0; color:#374151; font-size:15px; }
+    .btn { display:inline-block; padding:12px 20px; border-radius:8px; text-decoration:none; font-weight:600; background:#0b69ff; color:#fff; }
+    .muted { color:#6b7280; font-size:13px; margin-top:20px; }
+    .footer { padding:16px 24px; font-size:12px; color:#9ca3af; text-align:center; background:#fafafa; }
+    @media (max-width:420px){ .body{padding:20px 16px} .header{padding:16px} }
+  </style>
+</head>
+<body>
+  <div style="display:none; max-height:0; overflow:hidden; font-size:1px; color:#fff; line-height:1px; max-width:0;">
+    Reset your CodeColiseum password — tap the button inside.
+  </div>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:transparent;">
+    <tr>
+      <td align="center">
+        <div class="container" role="article" aria-label="Password reset">
+          <div class="header" role="banner">
+            <div class="logo" aria-hidden="true">CC</div>
+            <div>
+              <div style="font-weight:700; font-size:14px; color:#0f172a;">CodeColiseum</div>
+              <div style="font-size:12px; color:#6b7280;">Reset your password</div>
+            </div>
+          </div>
+
+          <div class="body">
+            <h1 class="h1">Hi ${user.name ?? "there"},</h1>
+
+            <p class="p">
+              We received a request to reset the password for your <strong>CodeColiseum</strong> account.
+              Click the button below to choose a new one.
+            </p>
+
+            <p style="text-align:center; margin:22px 0;">
+              <a href=${url} class="btn" target="_blank" rel="noopener">Reset my password</a>
+            </p>
+
+            <p class="p">
+              If the button doesn't work, copy and paste the following link into your browser:
+              <br />
+              <a href=${url} target="_blank" rel="noopener" style="color:#0b69ff; word-break:break-all;">${url}</a>
+            </p>
+
+            <p class="muted">
+              This link will expire in 1 hour. If you didn't request a password reset, you can safely ignore this email.
+            </p>
+          </div>
+
+          <div class="footer">
+            © 2025 CodeColiseum — <span style="color:#6b7280">Sharpen your skills. Compete. Learn.</span>
+          </div>
+        </div>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
 
 export const auth = betterAuth({
   database: prismaAdapter(prisma, {
@@ -22,6 +96,15 @@ export const auth = betterAuth({
     enabled: true,
     requireEmailVerification: false,
     autoSignIn: false,
+    sendResetPassword: async ({ user, token }) => {
+      const resetUrl = `${process.env.FRONTEND_URL ?? "http://localhost:3000"}/reset-password?token=${token}`;
+      await transporter.sendMail({
+        to: user.email,
+        subject: "Reset your CodeColiseum password",
+        text: `Click the link to reset your password: ${resetUrl}`,
+        html: resetPasswordEmailHtml(user, resetUrl),
+      });
+    },
   },
   session: {
     cookieCache: {
