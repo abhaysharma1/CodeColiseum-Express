@@ -484,9 +484,9 @@ export async function getModuleStudentProgress(
   const total = students.length;
   const pages = take > 0 ? Math.ceil(total / take) : 0;
 
-  // Solved counts = distinct ACCEPTED submissions per (user, problem) — the
-  // ground truth. ModuleProblemProgress lags it (interrupted polls, practice
-  // submissions), so it must not drive the displayed numbers.
+  // Solved counts = distinct ACCEPTED submissions per (user, problem) — a
+  // problem is solved for a student when they have an ACCEPTED submission for
+  // it, regardless of whether it was made from this module's UI.
   const needsCountsForSort =
     sortBy === "solvedProblems" || sortBy === "completionPercentage";
   const countUserIds = needsCountsForSort
