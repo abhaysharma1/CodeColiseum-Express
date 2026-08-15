@@ -1,7 +1,7 @@
 import { isLoggedIn } from "@/middleware/isLoggedin.middleware";
 import {
-  getProblems,
-  getProblemById,
+  getProblemsList,
+  getProblemDetails,
   getSubmissionStatus,
   getProblemTags,
   getProblemTestCases,
@@ -14,10 +14,10 @@ import { Router } from "express";
 
 const router = Router();
 
-router.get("/getproblems", getProblems);
+router.get("/getproblems", getProblemsList);
 router.get("/gettags", getProblemTags);
 router.get("/gettestcases", getProblemTestCases);
-router.get("/:id", getProblemById);
+router.get("/:id", getProblemDetails);
 router.post("/gettemplatecode", getTemplateCode);
 
 router.use(isLoggedIn);

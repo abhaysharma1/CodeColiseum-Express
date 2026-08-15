@@ -194,7 +194,7 @@ async function verifyModuleProblemSEB(
   }
 }
 
-export const getProblems = async (
+export const getProblemsList = async (
   req: Request,
   res: Response,
   next: NextFunction,
@@ -216,13 +216,7 @@ export const getProblems = async (
     const isAdmin = role === GLOBAL_ROLE_IDS.PLATFORM_ADMIN;
     const isTeacher = role === GLOBAL_ROLE_IDS.ORG_TEACHER;
 
-    const { searchValue, tags, difficulty, take, skip, withDescription } =
-      req.query;
-
-    const includeDescription =
-      withDescription === undefined
-        ? true
-        : String(withDescription).toLowerCase() !== "false";
+    const { searchValue, tags, difficulty, take, skip } = req.query;
 
     const where: any = {
       number: {
@@ -241,11 +235,11 @@ export const getProblems = async (
     } else if (isTeacher) {
       accessConditions.push({
         OR: [
-          { visibility: "PUBLIC", approvalStatus: "APPROVED" },
+          { approvalStatus: "APPROVED" },
           { ownerId: userId },
         ],
       });
-      accessConditions.push({ hidden: false });
+      // accessConditions.push({ hidden: false });
     } else {
       accessConditions.push({ visibility: "PUBLIC" });
       accessConditions.push({ approvalStatus: "APPROVED" });
@@ -262,15 +256,6 @@ export const getProblems = async (
         { title: { contains: search, mode: "insensitive" } },
         { id: search },
       ];
-
-      if (includeDescription) {
-        conditions.push({
-          description: {
-            contains: search,
-            mode: "insensitive",
-          },
-        });
-      }
 
       if (!Number.isNaN(parsedNumber)) {
         conditions.push({ number: parsedNumber });
@@ -311,20 +296,10 @@ export const getProblems = async (
         id: true,
         number: true,
         title: true,
-        description: includeDescription,
         difficulty: true,
         tags: {
           select: {
             tag: true,
-          },
-        },
-        performanceConstraints: {
-          select: {
-            cppTimeLimitMs: true,
-            javaTimeLimitMs: true,
-            pythonTimeLimitMs: true,
-            jsTimeLimitMs: true,
-            memoryLimitMB: true,
           },
         },
       },
@@ -609,7 +584,7 @@ export const submitCode = async (
   }
 };
 
-export const getProblemById = async (
+export const getProblemDetails = async (
   req: Request,
   res: Response,
   next: NextFunction,
@@ -623,39 +598,8 @@ export const getProblemById = async (
       return next(error);
     }
 
-    let role: string | undefined;
-    let userId: string | undefined;
-    try {
-      const session = await auth.api.getSession({
-        headers: fromNodeHeaders(req.headers),
-      });
-      role = session?.user?.globalRoleId ?? undefined;
-      userId = session?.user?.id ?? undefined;
-    } catch {
-      // No session — treat as public user
-    }
-
-    const isAdmin = role === GLOBAL_ROLE_IDS.PLATFORM_ADMIN;
-    const isTeacher = role === GLOBAL_ROLE_IDS.ORG_TEACHER;
-
-    const where: any = { id };
-
-    if (!isAdmin) {
-      if (isTeacher) {
-        where.OR = [
-          { visibility: "PUBLIC", approvalStatus: "APPROVED" },
-          { ownerId: userId },
-        ];
-        where.hidden = false;
-      } else {
-        where.visibility = "PUBLIC";
-        where.approvalStatus = "APPROVED";
-        where.hidden = false;
-      }
-    }
-
-    const problem = await prisma.problem.findFirst({
-      where,
+    const problem = await prisma.problem.findUnique({
+      where: { id: id as string },
       select: {
         id: true,
         number: true,
@@ -665,6 +609,15 @@ export const getProblemById = async (
         tags: {
           select: {
             tag: true,
+          },
+        },
+        performanceConstraints: {
+          select: {
+            cppTimeLimitMs: true,
+            javaTimeLimitMs: true,
+            pythonTimeLimitMs: true,
+            jsTimeLimitMs: true,
+            memoryLimitMB: true,
           },
         },
       },
