@@ -104,7 +104,10 @@ export async function getTeacherModuleProblemOrThrow(
     (err as any).status = 404;
     throw err;
   }
-  if (mp.module.lab.creatorId !== userId && mp.module.lab.teachers.length === 0) {
+  if (
+    mp.module.lab.creatorId !== userId &&
+    mp.module.lab.teachers.length === 0
+  ) {
     const err = new Error("Forbidden");
     (err as any).status = 403;
     throw err;
@@ -428,107 +431,282 @@ export async function getModuleStudentProgress(
   sortBy: StudentProgressSortBy = "name",
   sortOrder: SortOrder = "asc",
 ): Promise<StudentProgressListResponse> {
-  const [totalProblems, moduleProblems] = await Promise.all([
-    prisma.moduleProblem.count({ where: { moduleId } }),
-    prisma.moduleProblem.findMany({
-      where: { moduleId },
-      select: { id: true },
-    }),
-  ]);
+  const safeTake = Math.max(0, take);
+  const safeSkip = Math.max(0, skip);
+  const query = search.trim();
+
+  // ---------------------------------------------------------
+  // 1. Get module information and all problems in the module
+  // ---------------------------------------------------------
+
+  const module = await prisma.labModule.findUnique({
+    where: {
+      id: moduleId,
+    },
+    select: {
+      labId: true,
+      problems: {
+        select: {
+          id: true,
+        },
+      },
+    },
+  });
+
+  if (!module) {
+    return {
+      data: [],
+      pagination: {
+        take: safeTake,
+        skip: safeSkip,
+        total: 0,
+        pages: 0,
+      },
+    };
+  }
+
+  const moduleProblemIds = module.problems.map((problem) => problem.id);
+  const totalProblems = moduleProblemIds.length;
+
   if (totalProblems === 0) {
     return {
       data: [],
-      pagination: { take, skip, total: 0, pages: 0 },
+      pagination: {
+        take: safeTake,
+        skip: safeSkip,
+        total: 0,
+        pages: 0,
+      },
     };
   }
-  const moduleProblemIds = moduleProblems.map((mp) => mp.id);
 
-  // Resolve the student universe (id + name) from ModuleProblemProgress.
+  // ---------------------------------------------------------
+  // 2. Resolve the students who should appear in the module
+  // ---------------------------------------------------------
+
   let students: { id: string; name: string }[];
+
   if (groupId) {
+    // When a group is explicitly provided, use its members.
     const members = await prisma.groupMember.findMany({
-      where: { groupId },
-      select: { user: { select: { id: true, name: true } } },
+      where: {
+        groupId,
+      },
+      select: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
     });
+
     students = members
-      .map((m: any) => m.user)
-      .filter((u: any): u is { id: string; name: string } => !!u?.name);
+      .map((member) => member.user)
+      .filter(
+        (user): user is { id: string; name: string } =>
+          typeof user.name === "string" && user.name.length > 0,
+      );
   } else {
-    const progressUsers = await prisma.moduleProblemProgress.findMany({
-      where: { moduleProblemId: { in: moduleProblemIds } },
-      distinct: ["userId"],
-      select: { user: { select: { id: true, name: true } } },
+    // Without a group, include students from all groups assigned
+    // to the lab containing this module.
+    const assignments = await prisma.labAssignment.findMany({
+      where: {
+        labId: module.labId,
+      },
+      select: {
+        group: {
+          select: {
+            members: {
+              select: {
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
     });
-    const byId = new Map<string, { id: string; name: string }>();
-    for (const p of progressUsers as any[]) {
-      if (p.user?.name && !byId.has(p.user.id)) {
-        byId.set(p.user.id, { id: p.user.id, name: p.user.name });
+
+    // A student could theoretically belong to multiple groups,
+    // so deduplicate by user ID.
+    const studentMap = new Map<string, { id: string; name: string }>();
+
+    for (const assignment of assignments) {
+      for (const member of assignment.group.members) {
+        const user = member.user;
+
+        if (
+          typeof user.name === "string" &&
+          user.name.length > 0 &&
+          !studentMap.has(user.id)
+        ) {
+          studentMap.set(user.id, {
+            id: user.id,
+            name: user.name,
+          });
+        }
       }
     }
-    students = Array.from(byId.values());
+
+    students = Array.from(studentMap.values());
   }
 
-  // Case-insensitive name search.
-  const q = search.trim().toLowerCase();
-  if (q) {
-    students = students.filter((s) => s.name.toLowerCase().includes(q));
+  // ---------------------------------------------------------
+  // 3. Apply name search
+  // ---------------------------------------------------------
+
+  if (query) {
+    const lowerQuery = query.toLowerCase();
+
+    students = students.filter((student) =>
+      student.name.toLowerCase().includes(lowerQuery),
+    );
   }
 
   const total = students.length;
-  const pages = take > 0 ? Math.ceil(total / take) : 0;
 
-  // Solved counts = number of module problems this student solved, as
-  // recorded in ModuleProblemProgress (isSolved per module problem).
-  const needsCountsForSort =
-    sortBy === "solvedProblems" || sortBy === "completionPercentage";
-  const countUserIds = needsCountsForSort
-    ? students.map((s) => s.id)
-    : students.slice(skip, skip + take).map((s) => s.id);
-
-  const solvedMap = new Map<string, number>();
-  if (countUserIds.length > 0) {
-    const progress = await prisma.moduleProblemProgress.findMany({
-      where: {
-        moduleProblemId: { in: moduleProblemIds },
-        isSolved: true,
-        userId: { in: countUserIds },
+  if (total === 0 || safeTake === 0) {
+    return {
+      data: [],
+      pagination: {
+        take: safeTake,
+        skip: safeSkip,
+        total,
+        pages: safeTake > 0 ? Math.ceil(total / safeTake) : 0,
       },
-      select: { userId: true },
-    });
-    for (const p of progress) {
-      solvedMap.set(p.userId, (solvedMap.get(p.userId) ?? 0) + 1);
-    }
+    };
   }
 
+  // ---------------------------------------------------------
+  // 4. Determine which students need solved counts
+  // ---------------------------------------------------------
+  //
+  // For name sorting, we only need counts for the current page.
+  //
+  // For solved/completion sorting, we need counts for every
+  // student because the database result must be sorted by them.
+  // ---------------------------------------------------------
+
+  const needsGlobalSort =
+    sortBy === "solvedProblems" || sortBy === "completionPercentage";
+
   if (sortBy === "name") {
-    students.sort((a, b) =>
-      sortOrder === "asc"
-        ? a.name.localeCompare(b.name)
-        : b.name.localeCompare(a.name),
-    );
-  } else {
+    students.sort((a, b) => {
+      const comparison = a.name.localeCompare(b.name);
+
+      return sortOrder === "asc" ? comparison : -comparison;
+    });
+  }
+
+  const studentsForCounting = needsGlobalSort
+    ? students
+    : students.slice(safeSkip, safeSkip + safeTake);
+
+  const studentIds = studentsForCounting.map((student) => student.id);
+
+  // ---------------------------------------------------------
+  // 5. Get solved problem counts
+  // ---------------------------------------------------------
+  //
+  // groupBy is much cheaper than loading every progress row
+  // and counting them in JavaScript.
+  // ---------------------------------------------------------
+
+  const solvedCounts =
+    studentIds.length > 0
+      ? await prisma.moduleProblemProgress.groupBy({
+          by: ["userId"],
+          where: {
+            userId: {
+              in: studentIds,
+            },
+            moduleProblemId: {
+              in: moduleProblemIds,
+            },
+            isSolved: true,
+          },
+          _count: {
+            _all: true,
+          },
+        })
+      : [];
+
+  const solvedMap = new Map<string, number>();
+
+  for (const result of solvedCounts) {
+    solvedMap.set(result.userId, result._count._all);
+  }
+
+  // ---------------------------------------------------------
+  // 6. Sort by solved/completion if requested
+  // ---------------------------------------------------------
+
+  if (needsGlobalSort) {
     students.sort((a, b) => {
       const aSolved = solvedMap.get(a.id) ?? 0;
       const bSolved = solvedMap.get(b.id) ?? 0;
-      const cmp = sortOrder === "asc" ? aSolved - bSolved : bSolved - aSolved;
-      return cmp === 0 ? a.name.localeCompare(b.name) : cmp;
+
+      let comparison = 0;
+
+      if (sortBy === "solvedProblems") {
+        comparison = aSolved - bSolved;
+      } else {
+        // totalProblems is identical for every student, therefore
+        // completion percentage has the same ordering as solved count.
+        comparison = aSolved - bSolved;
+      }
+
+      if (sortOrder === "desc") {
+        comparison = -comparison;
+      }
+
+      // Stable secondary sort by name.
+      if (comparison === 0) {
+        comparison = a.name.localeCompare(b.name);
+      }
+
+      return comparison;
     });
   }
 
-  const pageStudents = students.slice(skip, skip + take);
+  // ---------------------------------------------------------
+  // 7. Pagination
+  // ---------------------------------------------------------
 
-  const data = pageStudents.map((s) => {
-    const solved = solvedMap.get(s.id) ?? 0;
+  const pageStudents = students.slice(safeSkip, safeSkip + safeTake);
+
+  // ---------------------------------------------------------
+  // 8. Build response
+  // ---------------------------------------------------------
+
+  const data = pageStudents.map((student) => {
+    const solved = solvedMap.get(student.id) ?? 0;
+
     return {
-      studentId: s.id,
-      studentName: s.name,
+      studentId: student.id,
+      studentName: student.name,
       solvedProblems: solved,
       totalProblems,
-      completionPercentage: Math.round((solved / totalProblems) * 100),
+      completionPercentage:
+        totalProblems > 0 ? Math.round((solved / totalProblems) * 100) : 0,
     };
   });
 
-  return { data, pagination: { take, skip, total, pages } };
+  return {
+    data,
+    pagination: {
+      take: safeTake,
+      skip: safeSkip,
+      total,
+      pages: safeTake > 0 ? Math.ceil(total / safeTake) : 0,
+    },
+  };
 }
 
 async function ensureStudentInModule(studentId: string, moduleId: string) {
