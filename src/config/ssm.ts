@@ -23,6 +23,8 @@ export async function loadSebConfig() {
     })
   );
 
+  console.log(result)
+
   const params = Object.fromEntries(
     (result.Parameters ?? []).map((p) => [
       p.Name,
