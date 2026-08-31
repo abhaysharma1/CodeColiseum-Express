@@ -23,7 +23,6 @@ export async function loadSebConfig() {
     })
   );
 
-  console.log(result)
 
   const params = Object.fromEntries(
     (result.Parameters ?? []).map((p) => [
@@ -35,8 +34,8 @@ export async function loadSebConfig() {
   const rawKeys = params["/codecoliseum/seb/browserExamKeys"] || "";
   browserExamKeys = rawKeys
     .split(",")
-    .map((k) => k.trim())
-    .filter((k) => k.length > 0);
+    .map((k:string) => k.trim())
+    .filter((k:string) => k.length > 0);
 
   configKey =
     params["/codecoliseum/seb/configKey"];
