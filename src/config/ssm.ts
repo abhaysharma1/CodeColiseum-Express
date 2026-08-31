@@ -1,4 +1,4 @@
-// src/config/seb.ts
+// src/config/ssm.ts
 
 import {
   SSMClient,
@@ -9,14 +9,14 @@ const client = new SSMClient({
   region: "ap-south-1",
 });
 
-let browserExamKey = "";
+let browserExamKeys: string[] = [];
 let configKey = "";
 
 export async function loadSebConfig() {
   const result = await client.send(
     new GetParametersCommand({
       Names: [
-        "/codecoliseum/seb/browserExamKey",
+        "/codecoliseum/seb/browserExamKeys",
         "/codecoliseum/seb/configKey",
       ],
       WithDecryption: true,
@@ -30,8 +30,11 @@ export async function loadSebConfig() {
     ])
   );
 
-  browserExamKey =
-    params["/codecoliseum/seb/browserExamKey"];
+  const rawKeys = params["/codecoliseum/seb/browserExamKeys"] || "";
+  browserExamKeys = rawKeys
+    .split(",")
+    .map((k) => k.trim())
+    .filter((k) => k.length > 0);
 
   configKey =
     params["/codecoliseum/seb/configKey"];
@@ -39,7 +42,7 @@ export async function loadSebConfig() {
 
 export function getSebConfig() {
   return {
-    browserExamKey,
+    browserExamKeys,
     configKey,
   };
 }

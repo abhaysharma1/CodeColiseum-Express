@@ -144,9 +144,9 @@ function compareSebHashes(expectedHash: string, receivedHash: string): boolean {
 }
 
 export function verifySEB(req: Request) {
-  const { browserExamKey, configKey } = getSebConfig();
+  const { browserExamKeys, configKey } = getSebConfig();
 
-  if (!browserExamKey || !configKey) {
+  if (browserExamKeys.length === 0 || !configKey) {
     throw new SEBError("SEB keys are not configured");
   }
 
@@ -160,11 +160,12 @@ export function verifySEB(req: Request) {
     throw new SEBError("Missing SEB headers");
   }
 
-  const expectedRequestHash = createSebHash(requestUrl, browserExamKey);
+  const requestHashValid = browserExamKeys.some((key) => {
+    const expectedRequestHash = createSebHash(requestUrl, key);
+    return compareSebHashes(expectedRequestHash, requestHash);
+  });
 
   const expectedConfigKeyHash = createSebHash(requestUrl, configKey);
-
-  const requestHashValid = compareSebHashes(expectedRequestHash, requestHash);
 
   const configKeyHashValid = compareSebHashes(
     expectedConfigKeyHash,
