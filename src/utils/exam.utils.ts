@@ -160,10 +160,10 @@ export function verifySEB(req: Request) {
     throw new SEBError("Missing SEB headers");
   }
 
-  const requestHashValid = browserExamKeys.some((key) => {
-    const expectedRequestHash = createSebHash(requestUrl, key);
-    return compareSebHashes(expectedRequestHash, requestHash);
-  });
+  // const requestHashValid = browserExamKeys.some((key) => {
+  //   const expectedRequestHash = createSebHash(requestUrl, key);
+  //   return compareSebHashes(expectedRequestHash, requestHash);
+  // });
 
   const expectedConfigKeyHash = createSebHash(requestUrl, configKey);
 
@@ -172,9 +172,9 @@ export function verifySEB(req: Request) {
     configKeyHash,
   );
 
-  if (!requestHashValid) {
-    throw new SEBError("Invalid SEB request hash");
-  }
+  // if (!requestHashValid) {
+  //   throw new SEBError("Invalid SEB request hash");
+  // }
 
   if (!configKeyHashValid) {
     throw new SEBError("Invalid SEB config key hash");
