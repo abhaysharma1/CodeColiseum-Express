@@ -210,11 +210,10 @@ function toKb(bytes?: number): number {
 function getPistonExecuteUrl(): string {
   const pistonUri = process.env.PISTON_URI?.trim();
   if (!pistonUri) {
-    throw new AppError(
-      "PISTON_URI environment variable is missing",
-      500,
-      { code: "INTERNAL_SERVER_ERROR", isOperational: false },
-    );
+    throw new AppError("PISTON_URI environment variable is missing", 500, {
+      code: "INTERNAL_SERVER_ERROR",
+      isOperational: false,
+    });
   }
   return `${pistonUri.replace(/\/+$/, "")}/api/v2/execute`;
 }
@@ -292,9 +291,7 @@ interface PistonResponse {
  * clock limit), so treat code/signal as failures too instead of silently
  * returning an empty `runs` array.
  */
-function getCompileFailure(
-  compile: PistonResponse["compile"],
-): string | null {
+function getCompileFailure(compile: PistonResponse["compile"]): string | null {
   if (!compile) return null;
 
   const stderr = compile.stderr?.trim();
@@ -336,6 +333,7 @@ async function runCode(
       },
     );
   } catch (error) {
+    console.log(error);
     rethrowPistonRequestError(error);
   }
 
