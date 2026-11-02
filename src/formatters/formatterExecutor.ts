@@ -1,5 +1,6 @@
 import { spawn } from "child_process";
 import { ExecResult } from "./codeFormatter.types";
+import { AppError } from "@/shared/errors";
 
 export async function executeFormatter(
     executable: string,
@@ -16,8 +17,9 @@ export async function executeFormatter(
         const timer = setTimeout(() => {
             timedOut = true;
             child.kill();
-            const err = new Error("Formatting timed out");
-            (err as any).status = 408;
+            const err = new AppError("Formatting timed out", 408, {
+                code: "SERVICE_UNAVAILABLE",
+            });
             reject(err);
         }, timeoutMs);
 
@@ -38,8 +40,11 @@ export async function executeFormatter(
         child.on("error", (err: NodeJS.ErrnoException) => {
             clearTimeout(timer);
             if (err.code === "ENOENT") {
-                const error = new Error(`Formatter executable not found: ${executable}`);
-                (error as any).status = 500;
+                const error = new AppError(
+                    `Formatter executable not found: ${executable}`,
+                    500,
+                    { code: "INTERNAL_SERVER_ERROR", isOperational: false },
+                );
                 reject(error);
             } else {
                 reject(err);

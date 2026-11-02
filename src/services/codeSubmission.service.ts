@@ -1,20 +1,27 @@
-import { Request } from "express";
-import prisma from "../utils/prisma";
+import prisma from "@/infrastructure/database/prisma";
 import {
-  canGiveExam,
+  canGiveExamForUser,
   sanitizeSourceCode,
   validateAttempt,
   verifySEB,
-} from "../utils/exam.utils";
+  type SebRequestContext,
+} from "@/utils/exam.utils";
 import { ExecutionStatus } from "../../generated/prisma/enums";
 import { fromRuntimeLanguageId, getLanguageLabel } from "@/utils/languageCatalog";
 import { sendExamSubmissionToSQS } from "@/utils/sqs";
+import {
+  ForbiddenError,
+  NotFoundError,
+  ValidationError,
+} from "@/shared/errors";
 
 export interface SubmitCodeRequest {
   examId: string;
   problemId: string;
   sourceCode: string;
   languageId: number;
+  userId: string;
+  sebContext: SebRequestContext;
 }
 
 export interface SubmitCodeResponse {
@@ -35,7 +42,15 @@ export interface ExamSubmissionStatusResponse {
   memory?: number | null;
 }
 
-function calculateScore(passedTestcases: number, totalTestcases: number): number {
+export interface ExamSubmissionStatusInput {
+  submissionId: string;
+  userId: string;
+}
+
+function calculateScore(
+  passedTestcases: number,
+  totalTestcases: number,
+): number {
   if (!totalTestcases) {
     return 0;
   }
@@ -43,12 +58,16 @@ function calculateScore(passedTestcases: number, totalTestcases: number): number
   return Math.round((passedTestcases / totalTestcases) * 100);
 }
 
-export async function submitCodeService(
-  req: Request,
-  { examId, problemId, sourceCode, languageId }: SubmitCodeRequest,
-): Promise<SubmitCodeResponse> {
+export async function submitCodeService({
+  examId,
+  problemId,
+  sourceCode,
+  languageId,
+  userId,
+  sebContext,
+}: SubmitCodeRequest): Promise<SubmitCodeResponse> {
   if (!examId || !problemId || !sourceCode || !languageId) {
-    throw new Error("Missing required fields");
+    throw new ValidationError("Missing required fields");
   }
 
   const normalizedLanguage = fromRuntimeLanguageId(languageId);
@@ -57,7 +76,7 @@ export async function submitCodeService(
     : null;
 
   if (!normalizedLanguage || !languageLabel) {
-    throw new Error("Unsupported language");
+    throw new ValidationError("Unsupported language");
   }
 
   const examDetails = await prisma.exam.findUnique({
@@ -65,27 +84,27 @@ export async function submitCodeService(
   });
 
   if (!examDetails) {
-    throw new Error("Exam Not Found");
+    throw new NotFoundError("Exam Not Found");
   }
 
   if (examDetails.sebEnabled) {
-    verifySEB(req);
+    verifySEB(sebContext);
   }
 
-  const session = await canGiveExam(examDetails, req);
-  await validateAttempt(examDetails.id, session.user.id);
+  await canGiveExamForUser(examDetails, userId);
+  await validateAttempt(examDetails.id, userId);
 
   const examAttempt = await prisma.examAttempt.findUnique({
     where: {
       examId_studentId: {
         examId: examDetails.id,
-        studentId: session.user.id,
+        studentId: userId,
       },
     },
   });
 
   if (!examAttempt) {
-    throw new Error("Exam attempt not found");
+    throw new NotFoundError("Exam attempt not found");
   }
 
   const submission = await prisma.submission.create({
@@ -96,7 +115,7 @@ export async function submitCodeService(
       sourceCode: sanitizeSourceCode(sourceCode),
       status: ExecutionStatus.PENDING,
       examId,
-      userId: session.user.id,
+      userId,
       isFinal: false,
     },
   });
@@ -110,12 +129,12 @@ export async function submitCodeService(
   };
 }
 
-export async function getExamSubmissionStatusService(
-  req: Request,
-  submissionId: string,
-): Promise<ExamSubmissionStatusResponse> {
+export async function getExamSubmissionStatusService({
+  submissionId,
+  userId,
+}: ExamSubmissionStatusInput): Promise<ExamSubmissionStatusResponse> {
   if (!submissionId) {
-    throw new Error("submissionId is required");
+    throw new ValidationError("submissionId is required");
   }
 
   const submission = await prisma.submission.findUnique({
@@ -134,18 +153,17 @@ export async function getExamSubmissionStatusService(
   });
 
   if (!submission) {
-    const error = new Error("Submission not found");
-    (error as any).status = 404;
-    throw error;
+    throw new NotFoundError("Submission not found");
   }
 
-  if (!req.user || submission.userId !== req.user.id) {
-    const error = new Error("Forbidden");
-    (error as any).status = 403;
-    throw error;
+  if (submission.userId !== userId) {
+    throw new ForbiddenError("Forbidden");
   }
 
-  const score = calculateScore(submission.passedTestcases, submission.totalTestcases);
+  const score = calculateScore(
+    submission.passedTestcases,
+    submission.totalTestcases,
+  );
 
   return {
     success: true,

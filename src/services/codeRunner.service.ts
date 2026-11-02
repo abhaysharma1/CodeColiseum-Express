@@ -1,10 +1,12 @@
-import { Request } from "express";
-import prisma from "../utils/prisma";
-import { auth } from "../utils/auth";
-import { fromNodeHeaders } from "better-auth/node";
-import { fromRuntimeLanguageId, type LanguageKey } from "@/utils/languageCatalog";
+import prisma from "@/infrastructure/database/prisma";
+import { fromRuntimeLanguageId } from "@/utils/languageCatalog";
 import { executeSubmission, SubmissionExecutionError } from "./codeExecutor.service";
 import type { NormalizedTestcase } from "./types";
+import {
+  AppError,
+  NotFoundError,
+  ValidationError,
+} from "@/shared/errors";
 
 /* ----------------------------- Types ----------------------------- */
 
@@ -41,6 +43,8 @@ const normalizeLanguage = (languageId?: number) =>
 /* ----------------------------- Interfaces ----------------------------- */
 
 export interface RunCodeRequest {
+  /** Authenticated user requesting the run. */
+  userId: string;
   questionId: string;
   languageId?: number;
   code: string;
@@ -56,26 +60,15 @@ export interface RunCodeResponse {
 
 /* ----------------------------- Service ----------------------------- */
 
-export async function runCodeService(
-  req: Request,
-  { questionId, languageId, code }: RunCodeRequest,
-): Promise<RunCodeResponse> {
+export async function runCodeService({
+  questionId,
+  languageId,
+  code,
+}: RunCodeRequest): Promise<RunCodeResponse> {
   const normalizedLanguage = normalizeLanguage(languageId);
 
   if (!normalizedLanguage) {
-    const error = new Error("Unsupported language");
-    (error as any).status = 400;
-    throw error;
-  }
-
-  const session = await auth.api.getSession({
-    headers: fromNodeHeaders(req.headers),
-  });
-
-  if (!session?.user?.id) {
-    const error = new Error("Login required");
-    (error as any).status = 401;
-    throw error;
+    throw new ValidationError("Unsupported language");
   }
 
   const runTestCase = await prisma.runTestCase.findUnique({
@@ -83,9 +76,7 @@ export async function runCodeService(
   });
 
   if (!runTestCase) {
-    const error = new Error("Test cases not found");
-    (error as any).status = 404;
-    throw error;
+    throw new NotFoundError("Test cases not found");
   }
 
   let parsedCases: unknown = runTestCase.cases;
@@ -93,9 +84,9 @@ export async function runCodeService(
     try {
       parsedCases = JSON.parse(parsedCases);
     } catch {
-      const error = new Error("Invalid test cases");
-      (error as any).status = 500;
-      throw error;
+      throw new AppError("Invalid test cases", 500, {
+        code: "INTERNAL_SERVER_ERROR",
+      });
     }
   }
 
@@ -108,19 +99,19 @@ export async function runCodeService(
   const cases: TestCase[] = rawCases
     .map((item) => {
       const input =
-        item && typeof (item as any).input === "string" ? (item as any).input : "";
+        item && typeof (item as { input?: unknown }).input === "string"
+          ? (item as { input: string }).input
+          : "";
       const output =
-        item && typeof (item as any).output === "string"
-          ? (item as any).output
+        item && typeof (item as { output?: unknown }).output === "string"
+          ? (item as { output: string }).output
           : "";
       return { input, output };
     })
     .filter((testCase) => Boolean(testCase.input) || Boolean(testCase.output));
 
   if (cases.length === 0) {
-    const error = new Error("No test cases available");
-    (error as any).status = 404;
-    throw error;
+    throw new NotFoundError("No test cases available");
   }
 
   const problem = await prisma.problem.findUnique({
@@ -128,9 +119,7 @@ export async function runCodeService(
   });
 
   if (!problem) {
-    const error = new Error("Problem not found");
-    (error as any).status = 404;
-    throw error;
+    throw new NotFoundError("Problem not found");
   }
 
   const driver = await prisma.driverCode.findUnique({
@@ -155,11 +144,15 @@ export async function runCodeService(
       normalizedTestcases,
       { header: driver?.header ?? null, footer: driver?.footer ?? null },
     );
-  } catch (error: any) {
-    if (error instanceof SubmissionExecutionError && error.context?.status === "COMPILE_ERROR") {
-      const err = new Error(error.context.stderr || "Compilation failed");
-      (err as any).status = 400;
-      throw err;
+  } catch (error) {
+    if (
+      error instanceof SubmissionExecutionError &&
+      error.context?.status === "COMPILE_ERROR"
+    ) {
+      throw new AppError(error.context.stderr || "Compilation failed", 400, {
+        code: "VALIDATION_ERROR",
+        cause: error,
+      });
     }
     throw error;
   }

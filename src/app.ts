@@ -1,126 +1,118 @@
-import "dotenv/config";
-import express, { Application, Request, Response, NextFunction } from "express";
-import helmet from "helmet";
+import express, { type Application } from "express";
+import cookieParser from "cookie-parser";
 import cors from "cors";
-import morgan from "morgan";
+import helmet from "helmet";
 import { toNodeHandler } from "better-auth/node";
 import { auth } from "@/utils/auth";
-import teacherRouter from "@/routes/teacher.route";
-import problemRouter from "@/routes/problem.route";
-import studentRouter from "@/routes/student.routes";
-import adminRouter from "@/routes/admin.route";
-import internalRouter from "@/routes/internal.routes";
-import permissionsRouter from "@/routes/permissions.route";
-import publicAuthRouter from "@/routes/public.auth.route";
-import notificationsRouter from "@/routes/notifications.route";
-import formatterRoutes from "@/routes/formatter.routes";
-import labTeacherRouter from "@/routes/lab.teacher.route";
-import labStudentRouter from "@/routes/lab.student.route";
-import marketplaceRouter from "@/routes/marketplace.routes";
-import cookieParser from "cookie-parser";
-import path from "path";
+import { appConfig } from "@/config/app.config";
+import { logger } from "@/config/logger";
+import { errorHandler, notFoundHandler } from "@/middleware/error-handler";
+import { requestId } from "@/middleware/request-id";
+import { requestLogger } from "@/middleware/request-logger";
+import {
+  authRateLimit,
+  globalRateLimit,
+} from "@/middleware/rate-limit";
+import {
+  adminRouter,
+  authRouter,
+  formatterRouter,
+  healthRouter,
+  internalRouter,
+  labStudentRouter,
+  labTeacherRouter,
+  marketplaceRouter,
+  notificationsRouter,
+  permissionsRouter,
+  problemsRouter,
+  sebRouter,
+  studentRouter,
+  teacherRouter,
+} from "@/modules";
 
+export function createApp(): Application {
+  const app = express();
 
-const app: Application = express();
+  app.disable("x-powered-by");
+  app.set("trust proxy", appConfig.trustProxy);
 
-app.use(morgan("dev"));
-app.set("trust proxy", true);
+  app.use(requestId);
+  app.use(requestLogger);
+  app.use(helmet());
 
-//Headers Logger
+  app.use(
+    cors({
+      origin: (origin, callback) => {
+        // Same-origin/non-browser requests have no Origin header.
+        if (!origin || appConfig.cors.origins.includes(origin)) {
+          callback(null, true);
+          return;
+        }
 
-
-
-// app.use((req: Request, _res: Response, next: NextFunction) => {
-//   console.log(
-//     `[Headers] ${req.method} ${req.url}:`,
-//     JSON.stringify(req.headers, null, 2),
-//   );
-//   next();
-// });
-
-app.use(helmet());
-
-app.use(
-  cors({
-    origin: process.env.FRONTEND_URL,
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "X-SafeExamBrowser-RequestHash",
-      "X-SafeExamBrowser-ConfigKeyHash", // include all SEB headers you use
-    ],
-    credentials: true,
-    optionsSuccessStatus: 200, // For legacy browser support
-  }),
-);
-
-app.use("/api/auth", toNodeHandler(auth)); // Better Auth Api
-
-app.use(cookieParser());
-
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
-
-app.get("/health", (req: Request, res: Response) => {
-  res.status(200).json({ status: "UP", timestamp: new Date().toISOString() });
-});
-
-app.get("/", (req: Request, res: Response) => {
-  res.status(200).json({ status: "UP" });
-});
-
-app.use("/api/teacher", teacherRouter);
-app.use("/api/teacher", labTeacherRouter);
-app.use("/api/student", studentRouter);
-app.use("/api/student", labStudentRouter);
-app.use("/api/marketplace", marketplaceRouter);
-app.use("/api/admin", adminRouter);
-app.use("/api/problems", problemRouter);
-app.use("/api/internal", internalRouter);
-app.use("/api/permissions", permissionsRouter);
-app.use("/api/public-auth", publicAuthRouter);
-
-
-app.get("/api/seb/config", (req, res) => {
-  const filePath = path.join(
-    process.cwd(),
-    "assets",
-    "SEB_File.seb"
+        callback(null, false);
+      },
+      allowedHeaders: [...appConfig.cors.allowedHeaders],
+      credentials: appConfig.cors.credentials,
+      optionsSuccessStatus: appConfig.cors.optionsSuccessStatus,
+    }),
   );
 
-  res.setHeader(
-    "Content-Type",
-    "application/octet-stream"
+  if (appConfig.rateLimit.enabled) {
+    app.use("/api", globalRateLimit);
+    app.use("/api/public-auth", authRateLimit);
+  }
+
+  // Better Auth handles its own body parsing, so it must be mounted before
+  // express.json().
+  app.use("/api/auth", toNodeHandler(auth));
+
+  app.use(cookieParser());
+  app.use(express.json({ limit: appConfig.body.jsonLimit }));
+  app.use(
+    express.urlencoded({
+      extended: true,
+      limit: appConfig.body.urlEncodedLimit,
+    }),
   );
 
-  res.setHeader(
-    "Content-Disposition",
-    'attachment; filename="SEB_File.seb"'
-  );
+  app.use("/", healthRouter);
+  app.use("/api/seb", sebRouter);
 
-  res.sendFile(filePath);
-});
+  app.use("/api/teacher", teacherRouter);
+  app.use("/api/teacher", labTeacherRouter);
+  app.use("/api/student", studentRouter);
+  app.use("/api/student", labStudentRouter);
+  app.use("/api/marketplace", marketplaceRouter);
+  app.use("/api/admin", adminRouter);
+  app.use("/api/problems", problemsRouter);
+  app.use("/api/internal", internalRouter);
+  app.use("/api/permissions", permissionsRouter);
+  app.use("/api/public-auth", authRouter);
+  app.use("/api/notifications", notificationsRouter);
+  app.use("/api/tools", formatterRouter);
 
-// Notifications API
-app.use("/api/notifications", notificationsRouter);
+  app.use(notFoundHandler);
+  app.use(errorHandler);
 
-// Code Formatting API
-app.use("/api/tools", formatterRoutes);
+  return app;
+}
 
-app.use((req: Request, res: Response) => {
-  res.status(404).json({ message: "Resource not found" });
-});
+const app = createApp();
 
-// Global Error Handler
-app.use((err: any, req: Request, res: Response, next: NextFunction) => {
-  const statusCode = err.status || err.statusCode || 500;
-  console.error(`[Error] ${err.message}`);
-
-  res.status(statusCode).json({
-    success: false,
-    message: err.message || "Internal Server Error",
-    stack: process.env.NODE_ENV === "development" ? err.stack : undefined,
-  });
+logger.debug("express application composed", {
+  modules: [
+    "auth",
+    "problems",
+    "notifications",
+    "permissions",
+    "marketplace",
+    "formatter",
+    "system",
+    "teacher",
+    "student",
+    "admin",
+    "internal",
+  ],
 });
 
 export default app;

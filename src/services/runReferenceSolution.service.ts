@@ -1,9 +1,7 @@
-import { Request } from "express";
-import { auth } from "../utils/auth";
-import { fromNodeHeaders } from "better-auth/node";
 import { fromRuntimeLanguageId } from "@/utils/languageCatalog";
 import { executeSubmission } from "./codeExecutor.service";
 import type { NormalizedTestcase } from "./types";
+import { NotFoundError, ValidationError } from "@/shared/errors";
 
 /* ----------------------------- Types ----------------------------- */
 
@@ -55,40 +53,31 @@ export interface RunRawCodeResponse {
 
 /* ----------------------------- Service ----------------------------- */
 
-export async function runRawCodeService(
-  req: Request,
-  { languageId, code, cases }: RunRawCodeRequest,
-): Promise<RunRawCodeResponse> {
+/**
+ * Runs arbitrary code against supplied cases. Authentication/authorization is
+ * handled by the route layer; this service has no Express dependency.
+ */
+export async function runRawCodeService({
+  languageId,
+  code,
+  cases,
+}: RunRawCodeRequest): Promise<RunRawCodeResponse> {
   const normalizedLanguage = normalizeLanguage(languageId);
 
   if (!normalizedLanguage) {
-    const error = new Error("Unsupported language");
-    (error as any).status = 400;
-    throw error;
-  }
-
-  const session = await auth.api.getSession({
-    headers: fromNodeHeaders(req.headers),
-  });
-
-  if (!session?.user?.id) {
-    const error = new Error("Login required");
-    (error as any).status = 401;
-    throw error;
+    throw new ValidationError("Unsupported language");
   }
 
   const normalizedTestcases: NormalizedTestcase[] = (cases ?? [])
-    .map((tc, idx) => ({
-      testcaseId: `tc-${idx + 1}`,
-      input: tc.input ?? "",
-      expectedOutput: tc.output ?? "",
+    .map((testCase, index) => ({
+      testcaseId: `tc-${index + 1}`,
+      input: testCase.input ?? "",
+      expectedOutput: testCase.output ?? "",
     }))
-    .filter((tc) => Boolean(tc.input) || Boolean(tc.expectedOutput));
+    .filter((testCase) => Boolean(testCase.input) || Boolean(testCase.expectedOutput));
 
   if (normalizedTestcases.length === 0) {
-    const error = new Error("No test cases available");
-    (error as any).status = 404;
-    throw error;
+    throw new NotFoundError("No test cases available");
   }
 
   const result = await executeSubmission(
@@ -96,30 +85,30 @@ export async function runRawCodeService(
     normalizedTestcases,
   );
 
-  const responses: PistonExecutionResult[] = result.details.map((d) => ({
+  const responses: PistonExecutionResult[] = result.details.map((detail) => ({
     language: normalizedLanguage,
     version: "*",
     run: {
-      stdout: d.stdout,
-      stderr: d.stderr ?? "",
-      output: d.stdout,
-      code: d.passed ? 0 : 1,
+      stdout: detail.stdout,
+      stderr: detail.stderr ?? "",
+      output: detail.stdout,
+      code: detail.passed ? 0 : 1,
       signal: null,
     },
   }));
 
-  const results: RunCaseResult[] = result.details.map((d) => ({
-    input: d.stdout,
-    expectedOutput: d.expectedOutput,
-    actualOutput: d.stdout,
-    passed: d.passed,
+  const results: RunCaseResult[] = result.details.map((detail) => ({
+    input: detail.stdout,
+    expectedOutput: detail.expectedOutput,
+    actualOutput: detail.stdout,
+    passed: detail.passed,
   }));
 
   return {
     responses,
-    cases: result.details.map((d) => ({
-      input: d.input,
-      output: d.expectedOutput,
+    cases: result.details.map((detail) => ({
+      input: detail.input,
+      output: detail.expectedOutput,
     })),
     results,
     passedCount: result.passedCount,

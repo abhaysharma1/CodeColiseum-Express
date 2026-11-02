@@ -509,9 +509,6 @@ export async function recalculateOrganizationStats(organizationId: string) {
     let totalStudents = 0;
     let totalScore = 0;
     let totalPassRate = 0;
-    const allStudents = await prisma.user.findMany({
-      select: { id: true },
-    });
 
     for (const group of groups) {
       totalStudents += group.members.length;

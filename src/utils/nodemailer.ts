@@ -1,7 +1,5 @@
 import { sendEmail } from "@/services/email";
 
-const defaultFrom = process.env.EMAIL_FROM ?? "noreply@codecoliseum.com";
-
 interface SendMailOptions {
   from?: string;
   to: string | string[];

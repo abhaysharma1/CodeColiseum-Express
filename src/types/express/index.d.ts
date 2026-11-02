@@ -1,9 +1,21 @@
-import { User } from "@/utils/auth";
+import type { AuthenticatedUser } from "@/shared/types/authenticated-user";
 
 declare global {
   namespace Express {
     interface Request {
-      user?: User; // Add your custom property here, e.g., 'user'
+      /**
+       * Populated by `requireAuth` / role middleware. Protected routes are
+       * guaranteed to have it; public routes must check before use.
+       */
+      user: AuthenticatedUser;
+      requestId?: string;
+      validated?: {
+        body?: unknown;
+        query?: unknown;
+        params?: unknown;
+      };
     }
   }
 }
+
+export {};

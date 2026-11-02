@@ -8,6 +8,7 @@ import type {
   PerformanceTestResult,
   ExecutionFailureContext,
 } from "./types";
+import { AppError } from "@/shared/errors";
 
 /* ----------------------------- Helpers ----------------------------- */
 
@@ -209,9 +210,11 @@ function toKb(bytes?: number): number {
 function getPistonExecuteUrl(): string {
   const pistonUri = process.env.PISTON_URI?.trim();
   if (!pistonUri) {
-    const err = new Error("PISTON_URI environment variable is missing");
-    (err as any).status = 500;
-    throw err;
+    throw new AppError(
+      "PISTON_URI environment variable is missing",
+      500,
+      { code: "INTERNAL_SERVER_ERROR", isOperational: false },
+    );
   }
   return `${pistonUri.replace(/\/+$/, "")}/api/v2/execute`;
 }

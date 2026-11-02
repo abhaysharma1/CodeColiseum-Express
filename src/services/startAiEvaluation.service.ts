@@ -88,7 +88,7 @@ export async function enqueuePracticeAIReview({
       parent: queuePath,
       task,
     });
-  } catch (error) {
+  } catch {
     throw new Error("Couldn't create Task");
   }
 

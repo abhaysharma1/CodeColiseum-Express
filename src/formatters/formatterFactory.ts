@@ -1,4 +1,5 @@
 import { CodeFormatter, SupportedLanguage } from "./codeFormatter.types";
+import { ValidationError } from "@/shared/errors";
 import { CFormatter } from "./cFormatter";
 import { CppFormatter } from "./cppFormatter";
 import { JavaFormatter } from "./javaFormatter";
@@ -14,9 +15,7 @@ const formatters: Record<SupportedLanguage, CodeFormatter> = {
 export function getFormatter(language: string): CodeFormatter {
     const formatter = formatters[language as SupportedLanguage];
     if (!formatter) {
-        const err = new Error(`Unsupported language: ${language}`);
-        (err as any).status = 400;
-        throw err;
+        throw new ValidationError(`Unsupported language: ${language}`);
     }
     return formatter;
 }

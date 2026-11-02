@@ -1,11 +1,17 @@
 import { Request } from "express";
-import { Exam, ExamAttempt } from "../../generated/prisma/client";
+import { Exam } from "../../generated/prisma/client";
 import prisma from "./prisma";
 import { auth } from "./auth";
 import { fromNodeHeaders } from "better-auth/node";
 import crypto from "crypto";
 import { GLOBAL_ROLE_IDS } from "@/permissions/role.constants";
 import { getSebConfig } from "@/config/ssm";
+import {
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+  UnauthorizedError,
+} from "@/shared/errors";
 
 export async function isStudent(req: Request) {
   const session = await auth.api.getSession({
@@ -13,7 +19,7 @@ export async function isStudent(req: Request) {
   });
 
   if (!session) {
-    throw new Error("Unauthorized");
+    throw new UnauthorizedError("Unauthorized");
   }
 
   const dbUser = await prisma.user.findUnique({
@@ -22,7 +28,7 @@ export async function isStudent(req: Request) {
   });
 
   if (dbUser?.globalRoleId !== GLOBAL_ROLE_IDS.ORG_STUDENT) {
-    throw new Error("Forbidden: Student access required");
+    throw new ForbiddenError("Forbidden: Student access required");
   }
 
   return { session };
@@ -30,10 +36,20 @@ export async function isStudent(req: Request) {
 
 export async function canGiveExam(examDetails: Exam, req: Request) {
   const { session } = await isStudent(req);
+  await canGiveExamForUser(examDetails, session.user.id);
+  return session;
+}
 
+/**
+ * Session-independent eligibility check, shared by HTTP controllers and
+ * queue/service callers.
+ */
+export async function canGiveExamForUser(
+  examDetails: Exam,
+  userId: string,
+): Promise<void> {
   const now = Date.now();
   const start = new Date(examDetails.startDate).getTime();
-  const end = new Date(examDetails.endDate).getTime();
 
   const allowed = await prisma.examGroup.findFirst({
     where: {
@@ -41,7 +57,7 @@ export async function canGiveExam(examDetails: Exam, req: Request) {
       group: {
         members: {
           some: {
-            userId: session.user.id,
+            userId,
           },
         },
       },
@@ -50,21 +66,21 @@ export async function canGiveExam(examDetails: Exam, req: Request) {
   });
 
   if (!allowed) {
-    throw new Error("Student Not Allowed");
+    throw new ForbiddenError("Student Not Allowed");
   }
 
   if (start > now) {
-    throw new Error("Exam Not Started");
+    throw new ForbiddenError("Exam Not Started");
   }
 
   if (!examDetails.isPublished) {
-    throw new Error("Exam is not Published");
+    throw new ForbiddenError("Exam is not Published");
   }
 
   const attempted = await prisma.examAttempt.findFirst({
     where: {
       examId: examDetails.id,
-      studentId: session.user.id,
+      studentId: userId,
     },
   });
 
@@ -73,9 +89,8 @@ export async function canGiveExam(examDetails: Exam, req: Request) {
     attempted.status !== "NOT_STARTED" &&
     attempted.status !== "IN_PROGRESS"
   ) {
-    throw new Error("Already Attempted");
+    throw new ConflictError("Already Attempted");
   }
-  return session;
 }
 
 export async function validateAttempt(examId: string, studentId: string) {
@@ -84,7 +99,7 @@ export async function validateAttempt(examId: string, studentId: string) {
   });
 
   if (!attempt) {
-    throw new Error("Attempt not found");
+    throw new NotFoundError("Attempt not found");
   }
 
   if (new Date() > attempt.expiresAt) {
@@ -97,11 +112,11 @@ export async function validateAttempt(examId: string, studentId: string) {
         },
       });
     }
-    throw new Error("Exam time over");
+    throw new ForbiddenError("Exam time over");
   }
 
   if (attempt.status !== "IN_PROGRESS") {
-    throw new Error("Exam not active");
+    throw new ConflictError("Exam not active");
   }
 
   return attempt;
@@ -115,8 +130,41 @@ export class SEBError extends Error {
   }
 }
 
-function getHeaderValue(req: Request, name: string): string {
-  const value = req.headers[name.toLowerCase()];
+/**
+ * Minimal request information needed to validate a Safe Exam Browser request.
+ * Services accept this shape so they do not depend on Express.
+ */
+export interface SebRequestContext {
+  protocol: string;
+  host: string;
+  originalUrl: string;
+  headers: Record<string, string | string[] | undefined>;
+}
+
+export function toSebRequestContext(req: Request): SebRequestContext {
+  return {
+    protocol: req.protocol,
+    host: req.get("host") ?? "",
+    originalUrl: req.originalUrl,
+    headers: req.headers,
+  };
+}
+
+function resolveSebContext(
+  input: Request | SebRequestContext,
+): SebRequestContext {
+  if (typeof (input as Request).get === "function") {
+    return toSebRequestContext(input as Request);
+  }
+
+  return input as SebRequestContext;
+}
+
+function getHeaderValue(
+  context: SebRequestContext,
+  name: string,
+): string {
+  const value = context.headers[name.toLowerCase()];
 
   if (Array.isArray(value)) {
     return value[0] || "";
@@ -143,18 +191,22 @@ function compareSebHashes(expectedHash: string, receivedHash: string): boolean {
   );
 }
 
-export function verifySEB(req: Request) {
+export function verifySEB(input: Request | SebRequestContext) {
+  const context = resolveSebContext(input);
   const { browserExamKeys, configKey } = getSebConfig();
 
   if (browserExamKeys.length === 0 || !configKey) {
     throw new SEBError("SEB keys are not configured");
   }
 
-  const requestUrl = `${req.protocol}://${req.get("host")}${req.originalUrl}`;
+  const requestUrl = `${context.protocol}://${context.host}${context.originalUrl}`;
 
-  const requestHash = getHeaderValue(req, "x-safeexambrowser-requesthash");
+  const requestHash = getHeaderValue(context, "x-safeexambrowser-requesthash");
 
-  const configKeyHash = getHeaderValue(req, "x-safeexambrowser-configkeyhash");
+  const configKeyHash = getHeaderValue(
+    context,
+    "x-safeexambrowser-configkeyhash",
+  );
 
   if (!requestHash || !configKeyHash) {
     throw new SEBError("Missing SEB headers");

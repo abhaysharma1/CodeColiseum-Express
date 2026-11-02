@@ -1,4 +1,4 @@
-import { Request } from "express";
+import type { IncomingHttpHeaders } from "node:http";
 import { auth } from "../utils/auth";
 import { fromNodeHeaders } from "better-auth/node";
 import axios from "axios";
@@ -13,34 +13,44 @@ import type {
   NormalCaseResult,
   PerformanceCaseResult,
 } from "@/types/runtimeAnalyzer.types";
-import { executeSubmission, runPerformanceTests } from "./codeExecutor.service";
+import { executeSubmission, runPerformanceTests, SubmissionExecutionError } from "./codeExecutor.service";
 import type { NormalizedTestcase } from "./types";
+import {
+  NotFoundError,
+  UnauthorizedError,
+  ValidationError,
+} from "@/shared/errors";
 
 interface TestCase {
   input: string;
   output: string;
 }
 
+function readStringField(value: unknown, field: string): string {
+  if (typeof value !== "object" || value === null) {
+    return "";
+  }
+
+  const candidate = (value as Record<string, unknown>)[field];
+  return typeof candidate === "string" ? candidate : "";
+}
+
 export async function analyzeRuntime(
-  req: Request,
+  headers: IncomingHttpHeaders,
   problemId: string,
   language: string,
   sourceCode: string,
 ): Promise<RuntimeAnalysisResult> {
   const session = await auth.api.getSession({
-    headers: fromNodeHeaders(req.headers),
+    headers: fromNodeHeaders(headers),
   });
   if (!session?.user?.id) {
-    const err = new Error("Login required");
-    (err as any).status = 401;
-    throw err;
+    throw new UnauthorizedError("Login required");
   }
 
   const normalizedLanguage = language.trim().toLowerCase() as LanguageKey;
   if (!isSupportedLanguageKey(normalizedLanguage)) {
-    const err = new Error(`Unsupported language: ${language}`);
-    (err as any).status = 400;
-    throw err;
+    throw new ValidationError(`Unsupported language: ${language}`);
   }
 
   const problem = await prisma.problem.findUnique({
@@ -55,9 +65,7 @@ export async function analyzeRuntime(
   });
 
   if (!problem) {
-    const err = new Error("Problem not found");
-    (err as any).status = 404;
-    throw err;
+    throw new NotFoundError("Problem not found");
   }
 
   // Collect all test cases (public + hidden)
@@ -74,14 +82,8 @@ export async function analyzeRuntime(
     }
     if (Array.isArray(parsed)) {
       for (const item of parsed) {
-        const input =
-          item && typeof (item as any).input === "string"
-            ? (item as any).input
-            : "";
-        const output =
-          item && typeof (item as any).output === "string"
-            ? (item as any).output
-            : "";
+        const input = readStringField(item, "input");
+        const output = readStringField(item, "output");
         if (input || output) allTestCases.push({ input, output });
       }
     }
@@ -131,7 +133,7 @@ export async function analyzeRuntime(
         totalCount: result.totalTestcases,
         cases: caseResults,
       };
-    } catch (error: any) {
+    } catch (error) {
       if (axios.isAxiosError(error)) {
         const details =
           typeof error.response?.data === "string"
@@ -144,7 +146,10 @@ export async function analyzeRuntime(
           compilationError: `Piston execution failed: ${error.message}. ${details}`,
         };
       }
-      if (error?.context?.status === "COMPILE_ERROR") {
+      if (
+        error instanceof SubmissionExecutionError &&
+        error.context?.status === "COMPILE_ERROR"
+      ) {
         return {
           normalCases: {
             totalRuntimeMs: 0,
@@ -209,8 +214,11 @@ export async function analyzeRuntime(
                 : ("TIME_LIMIT_EXCEEDED" as const),
         }));
       }
-    } catch (error: any) {
-      const errMsg = error?.message ?? "Performance test execution failed";
+    } catch (error) {
+      const errMsg =
+        error instanceof Error
+          ? error.message
+          : "Performance test execution failed";
       performanceCases = problem.performanceTestCases.map((ptc) => ({
         id: ptc.id,
         name: ptc.name,

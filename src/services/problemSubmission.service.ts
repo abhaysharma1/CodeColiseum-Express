@@ -1,12 +1,6 @@
-import { Request } from "express";
-import prisma from "../utils/prisma";
-import { auth } from "../utils/auth";
-import { fromNodeHeaders } from "better-auth/node";
+import prisma from "@/infrastructure/database/prisma";
 import { sanitizeSourceCode } from "./codeExecutor.service";
-import {
-  fromRuntimeLanguageId,
-  getLanguageLabel,
-} from "@/utils/languageCatalog";
+import { fromRuntimeLanguageId } from "@/utils/languageCatalog";
 import { sendPracticeSubmissionToSQS } from "@/utils/sqs";
 import { ExecutionStatus } from "../../generated/prisma/enums";
 import {
@@ -14,9 +8,15 @@ import {
   TerminalResponse,
   SubmissionStatusResponse,
 } from "@/types/submission.types";
-import { upsertModuleProblemProgress } from "@/services/lab.service";
+import { upsertModuleProblemProgress } from "@/modules/labs/lab.service";
+import {
+  ForbiddenError,
+  NotFoundError,
+  ValidationError,
+} from "@/shared/errors";
 
 export interface SubmitCodeRequest {
+  userId: string;
   questionId: string;
   languageId?: number;
   code: string;
@@ -29,6 +29,12 @@ export interface SubmitCodeQueuedResponse {
   status: "PENDING";
 }
 
+export interface PracticeSubmissionStatusInput {
+  userId: string;
+  submissionId: string;
+  moduleProblemId?: string;
+}
+
 export interface PracticeSubmissionStatusResponse {
   success: boolean;
   submissionId: string;
@@ -37,38 +43,25 @@ export interface PracticeSubmissionStatusResponse {
   stderr?: string | null;
 }
 
-export async function submitCodeService(
-  req: Request,
-  { questionId, languageId, code, moduleProblemId }: SubmitCodeRequest,
-): Promise<SubmitCodeQueuedResponse> {
+export async function submitCodeService({
+  userId,
+  questionId,
+  languageId,
+  code,
+  moduleProblemId: _moduleProblemId,
+}: SubmitCodeRequest): Promise<SubmitCodeQueuedResponse> {
   const normalizedLanguage = fromRuntimeLanguageId(languageId);
 
   if (!normalizedLanguage) {
-    const error = new Error("Unsupported language");
-    (error as any).status = 400;
-    throw error;
-  }
-
-  const session = await auth.api.getSession({
-    headers: fromNodeHeaders(req.headers),
-  });
-
-  if (!session?.user?.id) {
-    const error = new Error("Unauthorized");
-    (error as any).status = 401;
-    throw error;
+    throw new ValidationError("Unsupported language");
   }
 
   const problem = await prisma.problem.findUnique({
-    where: {
-      id: questionId,
-    },
+    where: { id: questionId },
   });
 
   if (!problem) {
-    const error = new Error("Couldn't find problem");
-    (error as any).status = 400;
-    throw error;
+    throw new ValidationError("Couldn't find problem");
   }
 
   const submission = await prisma.selfSubmission.create({
@@ -76,7 +69,7 @@ export async function submitCodeService(
       sourceCode: sanitizeSourceCode(code),
       language: normalizedLanguage,
       passedTestcases: 0,
-      userId: session.user.id,
+      userId,
       problemId: questionId,
       status: "PENDING",
     },
@@ -91,46 +84,29 @@ export async function submitCodeService(
   };
 }
 
-export async function getPracticeSubmissionStatusService(
-  req: Request,
-  submissionId: string,
-  moduleProblemId?: string,
-): Promise<SubmissionStatusResponse> {
+export async function getPracticeSubmissionStatusService({
+  userId,
+  submissionId,
+  moduleProblemId,
+}: PracticeSubmissionStatusInput): Promise<SubmissionStatusResponse> {
   if (!submissionId) {
-    const error = new Error("submissionId is required");
-    (error as any).status = 400;
-    throw error;
+    throw new ValidationError("submissionId is required");
   }
 
-  const session = await auth.api.getSession({
-    headers: fromNodeHeaders(req.headers),
-  });
-
-  if (!session?.user?.id) {
-    const error = new Error("Unauthorized");
-    (error as any).status = 401;
-    throw error;
-  }
-
-  // Quick check to see current status
   const quickCheck = await prisma.selfSubmission.findUnique({
     where: { id: submissionId },
     select: { id: true, userId: true, status: true },
   });
 
   if (!quickCheck) {
-    const error = new Error("Submission not found");
-    (error as any).status = 404;
-    throw error;
+    throw new NotFoundError("Submission not found");
   }
 
-  if (quickCheck.userId !== session.user.id) {
-    const error = new Error("Forbidden");
-    (error as any).status = 403;
-    throw error;
+  if (quickCheck.userId !== userId) {
+    throw new ForbiddenError("Forbidden");
   }
 
-  // Return minimal response while polling
+  // Return minimal response while polling.
   if (quickCheck.status === "PENDING" || quickCheck.status === "RUNNING") {
     return {
       success: true,
@@ -139,7 +115,6 @@ export async function getPracticeSubmissionStatusService(
     } as PollResponse;
   }
 
-  // Return complete response when terminal status is reached
   const submission = await prisma.selfSubmission.findUnique({
     where: { id: submissionId },
     select: {
@@ -159,18 +134,16 @@ export async function getPracticeSubmissionStatusService(
   });
 
   if (!submission) {
-    const error = new Error("Submission not found");
-    (error as any).status = 404;
-    throw error;
+    throw new NotFoundError("Submission not found");
   }
 
-  // Update module problem progress if this submission was made in module context
-  upsertModuleProblemProgress(
+  // Module progress is a side effect and must not block the poll response.
+  void upsertModuleProblemProgress(
     submission.userId,
     submission.id,
     submission.status,
     moduleProblemId,
-  ).catch((err) => console.error("Failed to update module progress:", err));
+  ).catch(() => undefined);
 
   return {
     success: true,
