@@ -333,7 +333,6 @@ async function runCode(
       },
     );
   } catch (error) {
-    console.log(error);
     rethrowPistonRequestError(error);
   }
 
@@ -367,7 +366,7 @@ async function runCodeBatch(
         files: request.files,
         test_cases: request.test_cases,
         stop_on_first_failure: request.stop_on_first_failure ?? false,
-        compile_timeout: request.compile_timeout ?? 10000,
+        compile_timeout: request.compile_timeout ?? 5000,
         run_timeout: request.run_timeout ?? 3000,
         aggregate_run_timeout: request.aggregate_run_timeout,
       },
@@ -477,7 +476,7 @@ async function executeBatch(
     ],
     test_cases: testCasesPayload,
     run_timeout: 5000,
-    compile_timeout: 10000,
+    compile_timeout: 5000,
   });
 
   let passedCount = 0;
@@ -615,7 +614,7 @@ async function executeLegacyMarkers(
     ],
     stdin: buildAggregatedInput(dbCases),
     run_timeout: 5000,
-    compile_timeout: 10000,
+    compile_timeout: 5000,
   });
 
   const rawStdout = execResult.stdout;
@@ -759,7 +758,7 @@ export async function runPerformanceTests(
     test_cases: testCasesPayload,
     stop_on_first_failure: true,
     run_timeout: effectiveTimeLimit + 50,
-    compile_timeout: 10000,
+    compile_timeout: 5000,
   });
 
   let lastExecutionTimeMs = 0;
