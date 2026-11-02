@@ -344,33 +344,63 @@ async function runCode(
 async function runCodeBatch(
   request: ExecuteCodeBatchRequest,
 ): Promise<PistonRun[]> {
-  const response = await axios.post<PistonResponse>(
-    getPistonExecuteUrl(),
-    {
-      language: request.language,
-      version: request.version ?? "*",
-      files: request.files,
-      test_cases: request.test_cases,
-      stop_on_first_failure: request.stop_on_first_failure ?? false,
-      compile_timeout: request.compile_timeout ?? 10000,
-      run_timeout: request.run_timeout ?? 3000,
-      aggregate_run_timeout: request.aggregate_run_timeout,
-    },
-    {
-      timeout: 300_000,
-      headers: { "Content-Type": "application/json" },
-    },
-  );
+  try {
+    const response = await axios.post<PistonResponse>(
+      getPistonExecuteUrl(),
+      {
+        language: request.language,
+        version: request.version ?? "*",
+        files: request.files,
+        test_cases: request.test_cases,
+        stop_on_first_failure: request.stop_on_first_failure ?? false,
+        compile_timeout: request.compile_timeout ?? 10000,
+        run_timeout: request.run_timeout ?? 3000,
+        aggregate_run_timeout: request.aggregate_run_timeout,
+      },
+      {
+        timeout: 300_000,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
 
-  const compileError = getCompileFailure(response.data.compile);
-  if (compileError) {
-    throw new SubmissionExecutionError("Compilation failed", {
-      status: "COMPILE_ERROR",
-      stderr: compileError,
-    });
+    const compileError = getCompileFailure(response.data.compile);
+    if (compileError) {
+      throw new SubmissionExecutionError("Compilation failed", {
+        status: "COMPILE_ERROR",
+        stderr: compileError,
+      });
+    }
+
+    return response.data.runs ?? [];
+  } catch (error) {
+    // `test_cases` is provided by CodeColiseum's batch-enabled Piston image.
+    // Public and standard Piston deployments reject that extension with 400,
+    // but support the ordinary single-execution request below.
+    if (!axios.isAxiosError(error) || error.response?.status !== 400) {
+      throw error;
+    }
+
+    return Promise.all(
+      request.test_cases.map(async (testCase) => {
+        const result = await runCode({
+          language: request.language,
+          version: request.version,
+          files: request.files,
+          stdin: testCase.stdin,
+          run_timeout: request.run_timeout,
+          compile_timeout: request.compile_timeout,
+        });
+
+        return {
+          stdin: testCase.stdin,
+          stdout: result.stdout,
+          stderr: result.stderr,
+          output: result.stdout,
+          code: result.exitCode,
+        };
+      }),
+    );
   }
-
-  return response.data.runs ?? [];
 }
 
 /* ----------------------------- Public API ----------------------------- */
