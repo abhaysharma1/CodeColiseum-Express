@@ -266,8 +266,37 @@ interface PistonResponse {
     signal?: string;
     cpu_time?: number;
     memory?: number;
+    message?: string;
+    status?: string;
   };
   runs?: PistonRun[];
+}
+
+/**
+ * Piston reports compile failures with a non-zero exit code. It can also fail
+ * with an empty stderr (for example when the compiler is killed by the wall
+ * clock limit), so treat code/signal as failures too instead of silently
+ * returning an empty `runs` array.
+ */
+function getCompileFailure(
+  compile: PistonResponse["compile"],
+): string | null {
+  if (!compile) return null;
+
+  const stderr = compile.stderr?.trim();
+  if (stderr) return stderr;
+
+  if (typeof compile.code === "number" && compile.code !== 0) {
+    return (
+      compile.message || `Compilation failed with exit code ${compile.code}`
+    );
+  }
+
+  if (compile.signal) {
+    return compile.message || `Compilation terminated by ${compile.signal}`;
+  }
+
+  return null;
 }
 
 /* ----------------------------- Core Execution Functions ----------------------------- */
@@ -283,7 +312,7 @@ async function runCode(
       files: request.files,
       stdin: request.stdin ?? "",
       run_timeout: request.run_timeout ?? 5000,
-      compile_timeout: request.compile_timeout ?? 5000,
+      compile_timeout: request.compile_timeout ?? 10000,
     },
     {
       timeout: 30_000,
@@ -291,8 +320,8 @@ async function runCode(
     },
   );
 
-  const compileError = response.data.compile?.stderr;
-  if (compileError && compileError.trim().length > 0) {
+  const compileError = getCompileFailure(response.data.compile);
+  if (compileError) {
     throw new SubmissionExecutionError("Compilation failed", {
       status: "COMPILE_ERROR",
       stderr: compileError,
@@ -330,10 +359,11 @@ async function runCodeBatch(
     },
   );
 
-  if (response.data.compile?.stderr?.trim()) {
+  const compileError = getCompileFailure(response.data.compile);
+  if (compileError) {
     throw new SubmissionExecutionError("Compilation failed", {
       status: "COMPILE_ERROR",
-      stderr: response.data.compile.stderr,
+      stderr: compileError,
     });
   }
 
@@ -400,7 +430,7 @@ async function executeBatch(
     ],
     test_cases: testCasesPayload,
     run_timeout: 5000,
-    compile_timeout: 5000,
+    compile_timeout: 10000,
   });
 
   let passedCount = 0;
@@ -538,7 +568,7 @@ async function executeLegacyMarkers(
     ],
     stdin: buildAggregatedInput(dbCases),
     run_timeout: 5000,
-    compile_timeout: 5000,
+    compile_timeout: 10000,
   });
 
   const rawStdout = execResult.stdout;
@@ -682,7 +712,7 @@ export async function runPerformanceTests(
     test_cases: testCasesPayload,
     stop_on_first_failure: true,
     run_timeout: effectiveTimeLimit + 50,
-    compile_timeout: 5000,
+    compile_timeout: 10000,
   });
 
   let lastExecutionTimeMs = 0;

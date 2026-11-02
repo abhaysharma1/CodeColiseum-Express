@@ -6,12 +6,17 @@ import {
 
 const sqsClient = new SQSClient({
   region: process.env.AWS_REGION!,
+  // Locally this points at floci (SQS_ENDPOINT=http://localhost:4566).
+  // In production SQS_ENDPOINT is unset and the SDK uses the real AWS endpoint.
+  endpoint: process.env.SQS_ENDPOINT,
+  credentials:
+    process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY
+      ? {
+          accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+        }
+      : undefined,
 });
-
-// credentials: {
-//   accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-//   secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-// },
 
 const AI_REVIEW_QUEUE_URL = process.env.SQS_AI_EVAL_QUEUE_URL;
 const AI_CHAT_QUEUE_URL = process.env.SQS_AI_CHAT_QUEUE_URL;

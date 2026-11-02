@@ -1,6 +1,7 @@
 import prisma from "@/utils/prisma";
 import { NextFunction, Request, Response } from "express";
 import { groupType } from "generated/prisma/enums";
+import { Exam } from "generated/prisma/client";
 
 export async function getAllGroups(
   req: Request,
@@ -113,7 +114,7 @@ export async function getGroupExams(
       throw new Error("You Don't have access to this Group");
     }
 
-    let groupExams;
+    let groupExams: Exam[];
 
     if (searchValue == "") {
       groupExams = await prisma.exam.findMany({
@@ -150,7 +151,31 @@ export async function getGroupExams(
       });
     }
 
-    return res.status(200).json(groupExams);
+    // Attach the current student's attempt (if any) so the client can decide
+    // whether the exam can still be started or should open the result page.
+    const attempts = await prisma.examAttempt.findMany({
+      where: {
+        studentId: user.id,
+        examId: { in: groupExams.map((exam) => exam.id) },
+      },
+      select: {
+        examId: true,
+        status: true,
+        submittedAt: true,
+        totalScore: true,
+      },
+    });
+
+    const attemptByExamId = new Map(
+      attempts.map((attempt) => [attempt.examId, attempt]),
+    );
+
+    return res.status(200).json(
+      groupExams.map((exam) => ({
+        ...exam,
+        attempt: attemptByExamId.get(exam.id) ?? null,
+      })),
+    );
   } catch (error) {
     next(error);
   }

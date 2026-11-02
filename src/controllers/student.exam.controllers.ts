@@ -265,7 +265,23 @@ export const getExamDetails = async (
       return next(error);
     }
 
-    res.status(200).json(examDetails);
+    // Let the client know if this student already attempted the exam, so it
+    // can redirect to the result page instead of offering "Start Exam".
+    const attempt = await prisma.examAttempt.findUnique({
+      where: {
+        examId_studentId: {
+          examId: examDetails.id,
+          studentId: req.user.id,
+        },
+      },
+      select: {
+        status: true,
+        submittedAt: true,
+        totalScore: true,
+      },
+    });
+
+    res.status(200).json({ ...examDetails, attempt: attempt ?? null });
   } catch (error) {
     next(error);
   }

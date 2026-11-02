@@ -750,13 +750,107 @@ export const getExam = async (req: Request, res: Response) => {
     });
   }
 
-  if (exam.isPublished) {
-    return res.status(400).json({
-      error: "Exam cannot be edited once it has been published",
-    });
-  }
-
   return res.status(200).json(exam);
+};
+
+export const updateExamSettings = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const user = req.user;
+    const { examId, startDate, endDate, durationMin, sebEnabled } = req.body;
+
+    if (!examId) {
+      return res.status(400).json({ error: "examId is required" });
+    }
+
+    const exam = await prisma.exam.findUnique({
+      where: { id: examId },
+    });
+
+    if (!exam) {
+      return res.status(404).json({ error: "Exam not found" });
+    }
+
+    if (
+      !(await canAccessExamWithFallback(
+        user.id,
+        exam.id,
+        exam.creatorId,
+        PERMISSIONS.EXAM_EDIT,
+      ))
+    ) {
+      return res.status(403).json({ error: "Not authorized" });
+    }
+
+    const parsedStartDate = new Date(startDate);
+    const parsedEndDate = new Date(endDate);
+    const parsedDuration = Number(durationMin);
+
+    if (
+      Number.isNaN(parsedStartDate.getTime()) ||
+      Number.isNaN(parsedEndDate.getTime())
+    ) {
+      return res.status(400).json({ error: "Invalid start or end date" });
+    }
+
+    if (!Number.isInteger(parsedDuration) || parsedDuration <= 0) {
+      return res
+        .status(400)
+        .json({ error: "Duration must be a positive number of minutes" });
+    }
+
+    if (parsedStartDate >= parsedEndDate) {
+      return res
+        .status(400)
+        .json({ error: "Start date must be before end date" });
+    }
+
+    if (sebEnabled !== undefined && typeof sebEnabled !== "boolean") {
+      return res.status(400).json({ error: "sebEnabled must be a boolean" });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.exam.update({
+        where: { id: examId },
+        data: {
+          startDate: parsedStartDate,
+          endDate: parsedEndDate,
+          durationMin: parsedDuration,
+          ...(typeof sebEnabled === "boolean" ? { sebEnabled } : {}),
+        },
+      });
+
+      // Keep attempts that are already running in sync with the new schedule,
+      // so timing/duration changes also apply to students who have started.
+      const activeAttempts = await tx.examAttempt.findMany({
+        where: { examId, status: "IN_PROGRESS" },
+        select: { id: true, startedAt: true },
+      });
+
+      for (const attempt of activeAttempts) {
+        const expiresAt = new Date(
+          Math.min(
+            attempt.startedAt.getTime() + parsedDuration * 60 * 1000,
+            parsedEndDate.getTime(),
+          ),
+        );
+
+        await tx.examAttempt.update({
+          where: { id: attempt.id },
+          data: { expiresAt },
+        });
+      }
+    });
+
+    return res
+      .status(200)
+      .json({ message: "Exam settings updated successfully" });
+  } catch (error) {
+    next(error);
+  }
 };
 
 export const getAllGroupExams = async (req: Request, res: Response) => {

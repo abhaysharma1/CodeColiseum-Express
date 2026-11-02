@@ -17,6 +17,7 @@ import {
   publishExam,
   saveDraft,
   startAiEvaluation,
+  updateExamSettings,
 } from "@/controllers/teacher.controllers";
 import {
   getChartData,
@@ -49,6 +50,8 @@ router.get("/getallexamproblem", requirePermission(PERMISSIONS.EXAM_EDIT), getAl
 router.post("/savedraft", requirePermission(PERMISSIONS.EXAM_EDIT), saveDraft);
 
 router.post("/publishexam", requirePermission(PERMISSIONS.EXAM_PUBLISH), publishExam);
+
+router.post("/updateexamsettings", requirePermission(PERMISSIONS.EXAM_EDIT), updateExamSettings);
 
 router.get("/getresults", requirePermission(PERMISSIONS.SUBMISSION_VIEW), getExamResults);
 
