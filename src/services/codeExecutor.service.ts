@@ -219,6 +219,17 @@ function getPistonExecuteUrl(): string {
   return `${pistonUri.replace(/\/+$/, "")}/api/v2/execute`;
 }
 
+function rethrowPistonRequestError(error: unknown): never {
+  if (axios.isAxiosError(error)) {
+    throw new AppError("Code execution service is unavailable", 503, {
+      code: "SERVICE_UNAVAILABLE",
+      cause: error,
+    });
+  }
+
+  throw error;
+}
+
 /* ----------------------------- Error ----------------------------- */
 
 export class SubmissionExecutionError extends Error {
@@ -307,21 +318,26 @@ function getCompileFailure(
 async function runCode(
   request: ExecuteCodeRequest,
 ): Promise<ExecuteCodeResponse> {
-  const response = await axios.post<PistonResponse>(
-    getPistonExecuteUrl(),
-    {
-      language: request.language,
-      version: request.version ?? "*",
-      files: request.files,
-      stdin: request.stdin ?? "",
-      run_timeout: request.run_timeout ?? 5000,
-      compile_timeout: request.compile_timeout ?? 10000,
-    },
-    {
-      timeout: 30_000,
-      headers: { "Content-Type": "application/json" },
-    },
-  );
+  let response: Awaited<ReturnType<typeof axios.post<PistonResponse>>>;
+  try {
+    response = await axios.post<PistonResponse>(
+      getPistonExecuteUrl(),
+      {
+        language: request.language,
+        version: request.version ?? "*",
+        files: request.files,
+        stdin: request.stdin ?? "",
+        run_timeout: request.run_timeout ?? 5000,
+        compile_timeout: request.compile_timeout ?? 10000,
+      },
+      {
+        timeout: 30_000,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+  } catch (error) {
+    rethrowPistonRequestError(error);
+  }
 
   const compileError = getCompileFailure(response.data.compile);
   if (compileError) {
@@ -377,7 +393,7 @@ async function runCodeBatch(
     // Public and standard Piston deployments reject that extension with 400,
     // but support the ordinary single-execution request below.
     if (!axios.isAxiosError(error) || error.response?.status !== 400) {
-      throw error;
+      rethrowPistonRequestError(error);
     }
 
     return Promise.all(
